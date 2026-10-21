@@ -24,11 +24,11 @@ LCD_Z = 6.5
 
 
 def scene_for_phase(mi, cfg, phase, mesh_path, width_mm, height_mm,
-                    resolution, sample_count):
+                    resolution, sample_count, receive_distance_mm):
     T = mi.ScalarTransform4f
     # Camera views the LED-facing side of a white screen. Orthographic sensor
     # does NOT pass through the lens (the receiver sits in front of it).
-    sensor_z = cfg.lcd_distance_mm - 0.1
+    sensor_z = receive_distance_mm - 0.1
     scene = {
         "type": "scene",
         "integrator": {
@@ -47,7 +47,7 @@ def scene_for_phase(mi, cfg, phase, mesh_path, width_mm, height_mm,
         "lcd_receiver": {
             "type": "rectangle",
             "to_world": (
-                T.translate([0, 0, cfg.lcd_distance_mm * 0.001])
+                T.translate([0, 0, receive_distance_mm * 0.001])
                 @ T.rotate([1, 0, 0], 180)
                 @ T.scale([width_mm * 0.0005, height_mm * 0.0005, 1])
             ),
@@ -62,7 +62,7 @@ def scene_for_phase(mi, cfg, phase, mesh_path, width_mm, height_mm,
             "to_world": (
                 T.look_at(
                     origin=[0, 0, sensor_z * 0.001],
-                    target=[0, 0, cfg.lcd_distance_mm * 0.001],
+                    target=[0, 0, receive_distance_mm * 0.001],
                     up=[0, 1, 0]
                 )
                 @ T.scale([width_mm * 0.0005, height_mm * 0.0005, 1])
@@ -236,7 +236,7 @@ def main():
     for phase in range(4):
         scene = scene_for_phase(
             mi, cfg, phase, mesh, width_mm, height_mm,
-            (args.width, args.height), args.spp)
+            (args.width, args.height), args.spp, args.screen_mm)
         rgb = np.asarray(mi.render(scene, spp=args.spp)).astype(np.float64)
         # White diffuse sheet reflectance 1: E = pi * L for Lambertian receiver
         irradiance = np.maximum(0, np.mean(rgb[..., :3], axis=2) * math.pi)
@@ -254,10 +254,10 @@ def main():
         print(f"Phase {phase}: {metric}")
     comparison = phase_comparison(metrics)
     result = {
-        "method": "Mitsuba 3 ptracer, orthographic camera, diffuse receiving screen",
+        "method": "Mitsuba 3 ptracer: illuminated virtual screen, optional Gaussian diffuser to LCD",
         "scientific_warning": (
             "Radiance-to-irradiance conversion assumes unit-Lambertian receiver. "
-            "The 16384 profile points are interpolated from rendered pixels, "
+            The 16384 profile points are interpolated from rendered pixels, "
             "not independent high-resolution ray traces. "
             "Convergence and physical calibration have not been verified."
         ),
