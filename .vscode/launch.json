@@ -2,11 +2,37 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "照射像：Windows互換CPU（LLVM不要・低サンプル）",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/simulate.py",
+      "args": [
+        "--config",
+        "${workspaceFolder}/configs/current.json",
+        "--variant",
+        "scalar_rgb",
+        "--spp",
+        "64",
+        "--case",
+        "baseline",
+        "--phase",
+        "0"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
       "name": "照射像：プレビュー（設定JSON）",
       "type": "debugpy",
       "request": "launch",
       "program": "${workspaceFolder}/simulate.py",
-      "args": ["--config", "${workspaceFolder}/configs/current.json", "--mode", "preview"],
+      "args": [
+        "--config",
+        "${workspaceFolder}/configs/current.json",
+        "--mode",
+        "preview"
+      ],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
       "justMyCode": true
@@ -16,7 +42,12 @@
       "type": "debugpy",
       "request": "launch",
       "program": "${workspaceFolder}/simulate.py",
-      "args": ["--config", "${workspaceFolder}/configs/current.json", "--mode", "quality"],
+      "args": [
+        "--config",
+        "${workspaceFolder}/configs/current.json",
+        "--mode",
+        "quality"
+      ],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal"
     },
@@ -25,7 +56,11 @@
       "type": "debugpy",
       "request": "launch",
       "program": "${workspaceFolder}/simulate.py",
-      "args": ["--config", "${workspaceFolder}/configs/current.json", "--validate-only"],
+      "args": [
+        "--config",
+        "${workspaceFolder}/configs/current.json",
+        "--validate-only"
+      ],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal"
     }

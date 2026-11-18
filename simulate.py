@@ -199,6 +199,9 @@ def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config',type=Path,default=ROOT/'configs/current.json')
     parser.add_argument('--mode',choices=['preview','quality'],default='preview')
+    parser.add_argument('--variant', choices=['llvm_ad_rgb', 'cuda_ad_rgb', 'scalar_rgb'],
+                        help='Override the renderer backend; scalar_rgb avoids LLVM JIT')
+    parser.add_argument('--spp', type=int, help='Override samples per pixel for this run')
     parser.add_argument('--case',choices=CASES,action='append',dest='cases')
     parser.add_argument('--phase',type=int,choices=range(4),action='append',dest='phases')
     parser.add_argument('--output',type=Path)
@@ -207,12 +210,19 @@ def main(argv=None):
     try:data,cfg=load_config(args.config,args.mode)
     except (ValueError,KeyError,TypeError,OSError) as exc:
         parser.error(f'Invalid configuration: {exc}')
+    if args.variant:
+        data['render']['variant'] = args.variant
+    if args.spp is not None:
+        if args.spp <= 0:
+            parser.error('--spp must be positive')
+        data['render'][args.mode]['spp'] = args.spp
     sample=data['render'][args.mode]
     # This is an approximate folding period, not a measured result.
     q=data['screen_from_vertex_mm']/(cfg.ior if data['screen_medium']=='pmma' else 1.)
     a=cfg.led_to_flat_mm+cfg.thickness_mm/cfg.ior
     period=cfg.pitch_mm*(1+q/a)
     print(f'Config: {args.config.resolve()}',flush=True)
+    print(f'Renderer: {data["render"]["variant"]}', flush=True)
     print(f'LED to vertex {data["led_to_vertex_mm"]} mm; screen {data["screen_from_vertex_mm"]} mm ({data["screen_medium"]})',flush=True)
     print(f'Approximate AIR effective focal length R/(n-1): {cfg.radius_mm/(cfg.ior-1):.6f} mm',flush=True)
     print(f'Approximate folding period: {period:.6f} mm normal to grooves (not a measurement)',flush=True)

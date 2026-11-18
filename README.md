@@ -31,6 +31,18 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe simulate.py
 ```
 
+### Windowsで描画中にJITエラーが出る場合（LLVM不要の互換CPUモード）
+
+基本演算が成功しても、標準シーンが`Failed to materialize symbols`で停止するWindows環境があります。レンズ設定を変更する前に、LLVMのJITを使わない`scalar_rgb`を試せます。
+
+```powershell
+.\.venv\Scripts\python.exe simulate.py --variant scalar_rgb --spp 64 --case baseline --phase 0
+```
+
+F5では **照射像：Windows互換CPU（LLVM不要・低サンプル）** を選択します。まず1条件・1位相だけの低サンプル描画です。並列JITより遅く、64 sppの画像はノイズが多いため精密評価には使わないでください。描画が完了したら`--spp`を増やします。`--variant`と`--spp`の実際に使った値は`config_used.json`と`summary.json`に記録します。
+
+互換モードを通常設定にする場合は`configs/current.json`の`render.variant`を`scalar_rgb`に変更できます。こちらで確認したのはLinux上のscalar描画です。Windowsでの実行はユーザー環境で確認が必要です。
+
 ### LLVMが見つからない場合
 
 標準設定はCPUの`llvm_ad_rgb`です。LLVMの共有ライブラリが必要です。
