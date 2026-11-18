@@ -67,3 +67,35 @@ def test_mitsuba_scene_and_actual_render(tmp_path):
     # Baffle origin and scale correspond to exactly 32 mm height, not a half-height confusion.
     bbox=mi.load_dict(obj['baffle_1']).bbox()
     assert np.isclose(float(bbox.max.z-bbox.min.z),.032,atol=1e-6)
+
+
+def test_phase_figures_do_not_mix_phases_and_keep_scales(tmp_path, monkeypatch):
+    from simulate import save_phase_figures, replot_results
+    from matplotlib.figure import Figure
+    original=Figure.savefig
+    captured={}
+    def inspect(fig, path, **kwargs):
+        profiles=[ax for ax in fig.axes if ax.get_ylabel()=='Relative incident field (uncalibrated)']
+        captured[Path(path).name]=[(ax.lines[0].get_ydata().copy(),ax.get_ylim()) for ax in profiles]
+        return original(fig,path,**kwargs)
+    monkeypatch.setattr(Figure,'savefig',inspect)
+    records=[]
+    for phase in [0,2]:
+        for case in ['baffles','mask_baffles']:
+            stem=f'{case}_phase{phase}'
+            im=np.ones((4,4))*(phase+1)
+            np.save(tmp_path/(stem+'.npy'),im)
+            np.savetxt(tmp_path/(stem+'.csv'),np.c_[[.1,.2,.3],[phase+1]*3,[4]*3],
+                       delimiter=',',header='u,field,count',comments='')
+            records.append({'case':case,'phase':phase,'image_file':stem+'.npy','profile_file':stem+'.csv'})
+    (tmp_path/'summary.json').write_text(json.dumps({'records':records}))
+    (tmp_path/'config_used.json').write_text(json.dumps({'roi_mm':[8,8]}))
+    before={p.name:p.read_bytes() for p in tmp_path.glob('*.npy')}
+    assert replot_results(tmp_path)==0
+    assert set(captured)=={'phase_0.png','phase_2.png'}
+    assert all(np.all(y==1) for y,lim in captured['phase_0.png'])
+    assert all(np.all(y==3) for y,lim in captured['phase_2.png'])
+    limits=[lim for data in captured.values() for _,lim in data]
+    assert all(lim==limits[0] for lim in limits)
+    assert all((tmp_path/name).read_bytes()==data for name,data in before.items())
+    assert all((tmp_path/name).stat().st_size>0 for name in captured)

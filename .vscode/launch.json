@@ -2,6 +2,18 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "結果：4位相を別々に表示（再計算なし・最新の結果）",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/simulate.py",
+      "args": [
+        "--plot-only",
+        "latest"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
       "name": "照射像：Windows互換CPU（LLVM不要・低サンプル）",
       "type": "debugpy",
       "request": "launch",

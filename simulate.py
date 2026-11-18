@@ -195,6 +195,66 @@ def save_overview(output, records, roi):
     plt.close(fig)
 
 
+def save_phase_figures(output, records, roi):
+    """One file per phase, with matching profile/image and common scales across phases."""
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    if not records:
+        raise ValueError('No rendered records to plot')
+    cases=list(dict.fromkeys(r['case'] for r in records))
+    phases=sorted({r['phase'] for r in records})
+    profiles={}; images={}
+    for rec in records:
+        key=(rec['case'],rec['phase'])
+        if key in profiles:
+            raise ValueError(f'Duplicate result: {key}')
+        profiles[key]=np.loadtxt(output/rec['profile_file'],delimiter=',',skiprows=1)
+        images[key]=np.load(output/rec['image_file'])
+    ymax=max(float(np.nanmax(p[:,1])) for p in profiles.values())
+    image_max=max(float(np.quantile(im,.995)) for im in images.values())
+    ymax=max(ymax*1.1,1e-10); image_max=max(image_max,1e-10)
+    colors=['tab:blue','tab:orange','tab:green','tab:red']
+    files=[]
+    for phase in phases:
+        fig,axes=plt.subplots(2,len(cases),figsize=(6*len(cases),8),squeeze=False,layout='constrained')
+        for col,case in enumerate(cases):
+            key=(case,phase)
+            if key not in profiles:
+                axes[0,col].set(title=f'{case}: phase {phase} not rendered')
+                axes[1,col].axis('off')
+                continue
+            p=profiles[key]; im=images[key]
+            axes[0,col].plot(p[:,0],p[:,1],color=colors[phase],label=f'Phase {phase}')
+            axes[0,col].set(title=f'{case}: phase {phase} only',
+                xlabel='Folded coordinate normal to grooves (mm)',
+                ylabel='Relative incident field (uncalibrated)',ylim=(0,ymax))
+            axes[0,col].legend()
+            view=axes[1,col].imshow(im[::-1,::-1],origin='lower',aspect='equal',
+                extent=[-roi[0]/2,roi[0]/2,-roi[1]/2,roi[1]/2],vmin=0,vmax=image_max)
+            axes[1,col].set(title=f'{case}: phase {phase} illumination',
+                xlabel='World x (mm)',ylabel='World y (mm)')
+            fig.colorbar(view,ax=axes[1,col],label='Relative incident field')
+        fig.suptitle(f'Phase {phase} — common scales for all phases/cases; exploratory, uncalibrated')
+        name=f'phase_{phase}.png';fig.savefig(output/name,dpi=150);plt.close(fig);files.append(name)
+    return files
+
+
+def replot_results(output):
+    output=Path(output)
+    if str(output)=='latest':
+        candidates=[p.parent for p in (ROOT/'results').glob('*/summary.json')
+                    if (p.parent/'config_used.json').is_file()]
+        if not candidates:
+            raise ValueError('No saved results found under results/')
+        output=max(candidates,key=lambda p:(p/'summary.json').stat().st_mtime_ns)
+    summary=json.loads((output/'summary.json').read_text(encoding='utf-8'))
+    config=json.loads((output/'config_used.json').read_text(encoding='utf-8'))
+    files=save_phase_figures(output,summary['records'],config['roi_mm'])
+    print(f'Created {", ".join(files)} in {output.resolve()}\nReused saved data; no ray tracing was run.')
+    return 0
+
+
 def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config',type=Path,default=ROOT/'configs/current.json')
@@ -206,7 +266,14 @@ def main(argv=None):
     parser.add_argument('--phase',type=int,choices=range(4),action='append',dest='phases')
     parser.add_argument('--output',type=Path)
     parser.add_argument('--validate-only',action='store_true')
+    parser.add_argument('--plot-only', type=Path, metavar='RESULT_FOLDER_OR_latest',
+                        help='Create phase-specific figures from saved data, without rendering')
     args=parser.parse_args(argv)
+    if args.plot_only is not None:
+        try:
+            return replot_results(args.plot_only)
+        except (ValueError, KeyError, OSError) as exc:
+            parser.error(f'Cannot plot saved results: {exc}')
     try:data,cfg=load_config(args.config,args.mode)
     except (ValueError,KeyError,TypeError,OSError) as exc:
         parser.error(f'Invalid configuration: {exc}')
@@ -276,7 +343,8 @@ def main(argv=None):
             (output/'summary.json').write_text(json.dumps(result,indent=2),encoding='utf-8')
             print(f'Saved {stem}; mean={image.mean():.6g}, {time.monotonic()-started:.1f}s',flush=True)
     save_overview(output,records,data['roi_mm'])
-    print(f'Complete: {output.resolve()}\nOpen overview.png and summary.json. See warnings before interpretation.')
+    phase_files=save_phase_figures(output,records,data['roi_mm'])
+    print(f'Complete: {output.resolve()}\nOpen {", ".join(phase_files)} for separate phases, or overview.png for the overlay. See summary.json warnings.')
     return 0
 
 
