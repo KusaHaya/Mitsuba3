@@ -1,0 +1,33 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "照射像：プレビュー（設定JSON）",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/simulate.py",
+      "args": ["--config", "${workspaceFolder}/configs/current.json", "--mode", "preview"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      "name": "照射像：高品質（時間がかかります）",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/simulate.py",
+      "args": ["--config", "${workspaceFolder}/configs/current.json", "--mode", "quality"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "照射像：設定値の検査のみ",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/simulate.py",
+      "args": ["--config", "${workspaceFolder}/configs/current.json", "--validate-only"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    }
+  ]
+}

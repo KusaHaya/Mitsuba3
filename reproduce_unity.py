@@ -26,9 +26,10 @@ LCD_Z = 6.5
 def scene_for_phase(mi, cfg, phase, mesh_path, width_mm, height_mm,
                     resolution, sample_count, receive_distance_mm):
     T = mi.ScalarTransform4f
-    # Camera views the LED-facing side of a white screen. Orthographic sensor
+    # Camera views the LED-facing side of a white screen. Perspective sensor
     # does NOT pass through the lens (the receiver sits in front of it).
-    sensor_z = receive_distance_mm - 0.1
+    camera_distance_mm = min(1.0, receive_distance_mm * 0.5)
+    sensor_z = receive_distance_mm - camera_distance_mm
     scene = {
         "type": "scene",
         "integrator": {
@@ -58,14 +59,15 @@ def scene_for_phase(mi, cfg, phase, mesh_path, width_mm, height_mm,
             },
         },
         "sensor": {
-            "type": "orthographic",
+            "type": "perspective",
+            "fov_axis": "x",
+            "fov": math.degrees(2 * math.atan(width_mm / (2 * camera_distance_mm))),
             "to_world": (
                 T.look_at(
                     origin=[0, 0, sensor_z * 0.001],
                     target=[0, 0, receive_distance_mm * 0.001],
                     up=[0, 1, 0]
                 )
-                @ T.scale([width_mm * 0.0005, height_mm * 0.0005, 1])
             ),
             "near_clip": 1e-6,
             "far_clip": 1.0,
@@ -203,7 +205,7 @@ def main():
     parser.add_argument("--no-diffuser", action="store_true")
     parser.add_argument("--full-panel", action="store_true")
     parser.add_argument("--width", type=int, default=640)
-    parser.add_argument("--height", type=int, default=360)
+    parser.add_argument("--height", type=int, default=640)
     parser.add_argument("--lens-segments", type=int, default=32)
     parser.add_argument("--profile-count", type=int, default=16384)
     parser.add_argument("--output", type=Path, default=Path("results"))
@@ -212,6 +214,8 @@ def main():
         parser.error("spp, width and height must be positive; profile-count >= 64")
     if not 0.25 <= args.screen_mm <= 6.5 or not 0 <= args.diffuser_deg <= 3:
         parser.error("screen-mm should be 0.25..6.5; diffuser-deg 0..3")
+    if abs(args.width / args.height - (528/297 if args.full_panel else 1.0)) > 0.001:
+        parser.error("Pixel aspect must match the physical ROI; use --width 256 --height 256 for the cropped view")
     args.output.mkdir(parents=True, exist_ok=True)
     width_mm, height_mm = (PANEL_WIDTH, PANEL_HEIGHT) if args.full_panel else (8.0, 8.0)
     # Cover target window with repeated grooves; keep enough LED strips to cover.
@@ -257,7 +261,7 @@ def main():
         "method": "Mitsuba 3 ptracer: illuminated virtual screen, optional Gaussian diffuser to LCD",
         "scientific_warning": (
             "Radiance-to-irradiance conversion assumes unit-Lambertian receiver. "
-            The 16384 profile points are interpolated from rendered pixels, "
+            "The 16384 profile points are interpolated from rendered pixels, "
             "not independent high-resolution ray traces. "
             "Convergence and physical calibration have not been verified."
         ),
