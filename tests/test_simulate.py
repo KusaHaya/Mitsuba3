@@ -129,3 +129,35 @@ def test_full_width_profile_is_not_period_folded_or_zero_padded():
     _,constant,count=horizontal_profile(np.full((h,w),3.),roi,slope)
     assert np.allclose(constant,3.)
     assert count[0]<h and count[w//2]==h
+
+
+def test_spatial_overlap_index_has_defined_limits_and_scale_invariance():
+    from simulate import phase_overlap_fields
+    fields=np.array([[[4.,1.,1.,0.]],[[0.,1.,1.,0.]],[[0.,0.,1.,0.]],[[0.,0.,1.,0.]]])
+    total,fraction,index=phase_overlap_fields(fields)
+    assert np.allclose(index[0,:3],[0.,.5,.75])
+    assert np.isnan(index[0,3])
+    assert np.allclose(fraction.sum(axis=0)[total>0],1.)
+    _,f2,m2=phase_overlap_fields(fields*7)
+    assert np.allclose(fraction,f2)
+    assert np.allclose(index,m2,equal_nan=True)
+    with pytest.raises(ValueError):phase_overlap_fields(fields[:3])
+    with pytest.raises(ValueError):phase_overlap_fields(-fields)
+
+
+def test_overlay_requires_complete_phases_and_preserves_source_data(tmp_path):
+    from simulate import save_phase_overlays
+    records=[]
+    before={}
+    for phase in range(4):
+        name=f'case_phase{phase}.npy'
+        image=np.zeros((8,8));image[:,phase*2:(phase+1)*2]=1
+        np.save(tmp_path/name,image);before[name]=(tmp_path/name).read_bytes()
+        records.append({'case':'test','phase':phase,'image_file':name})
+    assert save_phase_overlays(tmp_path,records[:3],[8,8])==[]
+    files=save_phase_overlays(tmp_path,records,[8,8])
+    assert files==['phase_overlay.png','phase_overlay_zoom.png']
+    raw=np.load(tmp_path/'test_phase_overlap.npz')
+    assert np.allclose(raw['nondominant_fraction'],0.)
+    assert all((tmp_path/n).read_bytes()==b for n,b in before.items())
+    assert all((tmp_path/name).stat().st_size>0 for name in files)

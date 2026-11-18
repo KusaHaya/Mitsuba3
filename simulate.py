@@ -286,6 +286,84 @@ def save_phase_figures(output, records, roi, slope=None):
     return files
 
 
+def phase_overlap_fields(images):
+    """Spatial coexistence of separate phase fields, NOT observer/LCD crosstalk."""
+    fields=np.asarray(images,dtype=np.float64)
+    if fields.ndim!=3 or fields.shape[0]!=4:
+        raise ValueError('Overlap needs exactly four phase fields with identical dimensions')
+    if not np.isfinite(fields).all() or np.any(fields<0):
+        raise ValueError('Phase fields must be finite and nonnegative')
+    total=fields.sum(axis=0)
+    fractions=np.zeros_like(fields)
+    np.divide(fields,total[None,:,:],out=fractions,where=total[None,:,:]>0)
+    nondominant=np.full_like(total,np.nan)
+    np.subtract(1.,fractions.max(axis=0),out=nondominant,where=total>0)
+    return total,fractions,nondominant
+
+
+def save_phase_overlays(output, records, roi):
+    """Overlay linear numeric fields; never blend the already-colormapped screenshots."""
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Patch
+    from matplotlib.colors import to_rgb
+    cases=list(dict.fromkeys(r['case'] for r in records))
+    datasets={}
+    for case in cases:
+        entries={r['phase']:r for r in records if r['case']==case}
+        if set(entries)!=set(range(4)):
+            continue
+        images=np.stack([np.load(output/entries[p]['image_file']) for p in range(4)])
+        datasets[case]=phase_overlap_fields(images)
+    if not datasets:
+        return []  # Do not present one phase as a four-phase overlay.
+    reference=max(float(np.quantile(total,.995)) for total,_,_ in datasets.values())
+    reference=max(reference,1e-20)
+    palette=np.array([to_rgb(c) for c in ['tab:blue','tab:orange','tab:green','tab:red']])
+    for case,(total,fractions,mix) in datasets.items():
+        np.savez_compressed(output/f'{case}_phase_overlap.npz',total=total,
+            fractions=fractions,nondominant_fraction=mix,
+            display_reference=reference,display_valid=total>reference*.01)
+    names=[]
+    for zoom,name in [(False,'phase_overlay.png'),(True,'phase_overlay_zoom.png')]:
+        fig,axes=plt.subplots(2,len(datasets),figsize=(6*len(datasets),8 if zoom else 5.5),
+                              squeeze=False,layout='constrained')
+        for col,(case,(total,fractions,mix)) in enumerate(datasets.items()):
+            # Weighted hue identifies dominant phases. Mixed hues are not unique labels.
+            rgb=np.einsum('phw,pc->hwc',fractions,palette)
+            rgb*=np.sqrt(np.clip(total/reference,0,1))[...,None]
+            extent=[-roi[0]/2,roi[0]/2,-roi[1]/2,roi[1]/2]
+            axes[0,col].imshow(rgb[::-1,::-1],origin='lower',extent=extent,aspect='equal')
+            axes[0,col].set_title(f'{case}: four-phase color overlay')
+            visible=np.ma.masked_where(total<=reference*.01,mix)
+            cmap=plt.get_cmap('magma').copy();cmap.set_bad('#dddddd')
+            view=axes[1,col].imshow(visible[::-1,::-1],origin='lower',extent=extent,
+                                   aspect='equal',vmin=0,vmax=.75,cmap=cmap)
+            axes[1,col].set_title(f'{case}: non-dominant share, 1 - max(I)/sum(I)')
+            fig.colorbar(view,ax=axes[1,col],label='0: one phase; 0.5: two equal; 0.75: four equal',shrink=.8)
+            for ax in axes[:,col]:
+                ax.set(xlabel='World x (mm)',ylabel='World y (mm)')
+                if zoom:
+                    ax.set_xlim(-min(1.5,roi[0]/2),min(1.5,roi[0]/2))
+                    ax.set_ylim(-min(1.5,roi[1]/2),min(1.5,roi[1]/2))
+        fig.legend(handles=[Patch(color=palette[p],label=f'Phase {p}') for p in range(4)],
+                   loc='outside lower center',ncol=4)
+        fig.suptitle('Four-phase spatial overlap (not LCD crosstalk)',fontsize=14)
+        fig.savefig(output/name,dpi=160);plt.close(fig);names.append(name)
+    (output/'phase_overlay_notes.json').write_text(json.dumps({
+        'source':'Linear .npy fields; no screenshot colors used',
+        'complete_cases':list(datasets),
+        'colors':['phase0 blue','phase1 orange','phase2 green','phase3 red'],
+        'brightness':'sqrt(clip(sum(field)/reference,0,1)); display only',
+        'reference':reference,'reference_method':'maximum of per-case total-field 99.5th percentiles',
+        'low_signal_display_threshold':reference*.01,
+        'overlap_index':'1 - max(I0,I1,I2,I3) / sum(I0,I1,I2,I3)',
+        'warning':'Spatial coexistence only. Not LCD/observer crosstalk. Mixed colors do not uniquely identify a phase combination. Noise affects the index.'
+    },indent=2),encoding='utf-8')
+    return names
+
+
 def replot_results(output):
     output=Path(output)
     if str(output)=='latest':
@@ -298,6 +376,7 @@ def replot_results(output):
     config=json.loads((output/'config_used.json').read_text(encoding='utf-8'))
     files=save_phase_figures(output,summary['records'],config['roi_mm'],
                             config.get('optics',{}).get('normal_slope',1/3))
+    files+=save_phase_overlays(output,summary['records'],config['roi_mm'])
     print(f'Created {", ".join(files)} in {output.resolve()}\nReused saved data; no ray tracing was run.')
     return 0
 
@@ -400,6 +479,7 @@ def main(argv=None):
             print(f'Saved {stem}; mean={image.mean():.6g}, {time.monotonic()-started:.1f}s',flush=True)
     save_overview(output,records,data['roi_mm'])
     phase_files=save_phase_figures(output,records,data['roi_mm'],cfg.normal_slope)
+    phase_files+=save_phase_overlays(output,records,data['roi_mm'])
     print(f'Complete: {output.resolve()}\nOpen {", ".join(phase_files)} for separate phases, or overview.png for the overlay. See summary.json warnings.')
     return 0
 
