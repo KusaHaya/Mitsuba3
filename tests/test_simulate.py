@@ -18,18 +18,18 @@ def write_config(tmp_path, modify):
 
 def test_vertex_distance_and_screen_are_unambiguous():
     d,cfg=load_config(CONFIG)
-    assert cfg.led_to_flat_mm==118
-    assert cfg.led_to_flat_mm+cfg.thickness_mm==d['led_to_vertex_mm']==120
+    assert cfg.led_to_flat_mm==123
+    assert cfg.led_to_flat_mm+cfg.thickness_mm==d['led_to_vertex_mm']==125
     assert d['screen_from_vertex_mm']==1.5
 
 
 @pytest.mark.parametrize('modify',[
     lambda d:d.update(led_to_vertex_mm=1),
     lambda d:d['mask'].update(open_fraction=1.1),
-    lambda d:d['baffles'].update(height_mm=120),
+    lambda d:d['baffles'].update(height_mm=999),
     lambda d:d['render']['preview'].update(height=128),
     lambda d:d['optics'].update(lens_count=3),
-    lambda d:d['optics'].update(led_count_each_side=1),
+    lambda d:d['led_array'].update(count=9),
     lambda d:d.update(cases=[]),
     lambda d:d['optics'].update(normal_slope=float('nan')),
 ])
@@ -56,6 +56,7 @@ def test_mitsuba_scene_and_actual_render(tmp_path):
     from run import write_binary_ply
     d,cfg=load_config(CONFIG);d=copy.deepcopy(d)
     d['render']['preview']={'width':32,'height':32,'spp':64}
+    d['roi_mm']=[8,8]
     mesh=tmp_path/'lens.ply';v,f=lens_coordinates(cfg);write_binary_ply(mesh,v,f)
     for case in ['baseline','mask','baffles','mask_baffles']:
         obj=scene_dict(mi,d,cfg,mesh,0,case,'preview')
@@ -99,3 +100,32 @@ def test_phase_figures_do_not_mix_phases_and_keep_scales(tmp_path, monkeypatch):
     assert all(lim==limits[0] for lim in limits)
     assert all((tmp_path/name).read_bytes()==data for name,data in before.items())
     assert all((tmp_path/name).stat().st_size>0 for name in captured)
+
+
+def test_balanced_led_array_center_and_phase_counts():
+    from simulate import led_layout
+    d,cfg=load_config(CONFIG);bars=led_layout(d,cfg)
+    assert len(bars)==16
+    assert [sum(p==k for _,p,_ in bars) for k in range(4)]==[4]*4
+    central={i:(p,x) for i,p,x in bars if i in range(4)}
+    assert [central[i][0] for i in range(4)]==list(range(4))
+    assert np.allclose([central[i][1] for i in range(4)],[-34.05,-11.35,11.35,34.05])
+    assert np.isclose(sum(x for _,_,x in bars),0)
+    legacy=json.loads((CONFIG.parent/'previous_120_central8mm.json').read_text())
+    old=led_layout(legacy,cfg)
+    assert len(old)==9 and [sum(p==k for _,p,_ in old) for k in range(4)]==[3,2,2,2]
+
+
+def test_full_width_profile_is_not_period_folded_or_zero_padded():
+    from simulate import horizontal_profile
+    w,h=256,64;roi=[8.,8.];slope=1/3
+    x=roi[0]/2-(np.arange(w)+.5)*roi[0]/w
+    y=roi[1]/2-(np.arange(h)+.5)*roi[1]/h
+    X,Y=np.meshgrid(x,y)
+    im=2+np.cos(2*np.pi*(X+slope*Y-1.3)/.7)
+    xx,p,count=horizontal_profile(im,roi,slope)
+    assert len(xx)==w and xx[0]<-3.9 and xx[-1]>3.9
+    assert np.max(abs(p-(2+np.cos(2*np.pi*(xx-1.3)/.7))))<.02
+    _,constant,count=horizontal_profile(np.full((h,w),3.),roi,slope)
+    assert np.allclose(constant,3.)
+    assert count[0]<h and count[w//2]==h

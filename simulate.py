@@ -21,6 +21,20 @@ ROOT = Path(__file__).resolve().parent
 CASES = ('baseline', 'mask', 'baffles', 'mask_baffles')
 
 
+def led_layout(data, cfg):
+    """(index, phase, horizontal intercept at y=0). Optional balanced four-phase array."""
+    array=data.get('led_array')
+    if array is None:
+        return [(i,i%4,i*cfg.led_pitch_horizontal_mm)
+                for i in range(-cfg.led_count_each_side,cfg.led_count_each_side+1)]
+    count=array['count']
+    if not isinstance(count,int) or count<4 or count%4:
+        raise ValueError('led_array.count must be a positive multiple of four')
+    start=2-count//2
+    # Central indices 0..3 have their midpoint at x=0.
+    return [(i,i%4,(i-1.5)*cfg.led_pitch_horizontal_mm) for i in range(start,start+count)]
+
+
 def load_config(path, mode='preview'):
     data = json.loads(Path(path).read_text(encoding='utf-8-sig'))
     allowed = {f.name for f in fields(OpticsConfig)}
@@ -32,6 +46,7 @@ def load_config(path, mode='preview'):
     optics['led_to_flat_mm'] = distance - optics.get('thickness_mm', 2.)
     cfg = OpticsConfig(**optics)
     cfg.validate()
+    led_layout(data,cfg)
     if not all(math.isfinite(getattr(cfg, f.name)) for f in fields(OpticsConfig)):
         raise ValueError('All optics settings must be finite')
     positive = [distance, data['screen_from_vertex_mm'], *data['roi_mm'],
@@ -44,7 +59,7 @@ def load_config(path, mode='preview'):
         raise ValueError('Require ior > 1 and positive emitter radiance')
     if cfg.lens_count % 2:
         raise ValueError('Use an even lens_count to retain the same crest origin')
-    if cfg.led_count_each_side < 3:
+    if 'led_array' not in data and cfg.led_count_each_side < 3:
         raise ValueError('led_count_each_side >= 3 is needed to represent all four phases')
     if data['screen_medium'] not in ('air', 'pmma'):
         raise ValueError('screen_medium must be air or pmma')
@@ -111,11 +126,12 @@ def scene_dict(mi, data, cfg, mesh, phase, case, mode):
                     'pixel_format':'rgb','component_format':'float32','rfilter':{'type':'box'}},
             'sampler':{'type':'independent','sample_count':sample['spp']}}
     }
-    for i in range(-cfg.led_count_each_side,cfg.led_count_each_side+1):
-        if i % 4 != phase:
+    bars=led_layout(data,cfg)
+    for number,(i,led_phase,horizontal_position) in enumerate(bars):
+        if led_phase != phase:
             continue
-        u = i*cfg.led_pitch_horizontal_mm*nx
-        scene[f'led_{i+cfg.led_count_each_side}']={
+        u = horizontal_position*nx
+        scene[f'led_{number}']={
             'type':'rectangle',
             'to_world':T.translate([nx*u*mm,ny*u*mm,-data['led_to_vertex_mm']*mm])
                 @ T.rotate([0,0,1],math.degrees(angle))
@@ -142,9 +158,13 @@ def scene_dict(mi, data, cfg, mesh, phase, case, mode):
                 'bsdf':{'type':'diffuse','reflectance':0.}}
     if case in ('baffles','mask_baffles'):
         h=data['baffles']['height_mm']; thick=data['baffles']['thickness_mm']
-        for j in range(-cfg.led_count_each_side-1,cfg.led_count_each_side+1):
-            u=(j+.5)*cfg.led_pitch_horizontal_mm*nx
-            scene[f'baffle_{j+cfg.led_count_each_side+1}']={
+        # One wall at every adjacent pair's midpoint, plus the two exterior cell walls.
+        wall_positions=[bars[0][2]-cfg.led_pitch_horizontal_mm/2]
+        wall_positions += [(left[2]+right[2])/2 for left,right in zip(bars,bars[1:])]
+        wall_positions += [bars[-1][2]+cfg.led_pitch_horizontal_mm/2]
+        for j,position in enumerate(wall_positions):
+            u=position*nx
+            scene[f'baffle_{j}']={
                 'type':'cube',
                 'to_world':T.translate([nx*u*mm,ny*u*mm,(-data['led_to_vertex_mm']+h/2)*mm])
                     @ T.rotate([0,0,1],math.degrees(angle))
@@ -166,6 +186,23 @@ def folded_profile(image, roi_mm, slope, period_mm, bins=128):
     profile=np.full(bins,np.nan)
     np.divide(total,count,out=profile,where=count>0)
     return (np.arange(bins)+.5)*period_mm/bins,profile,count
+
+
+def horizontal_profile(image, roi_mm, slope):
+    """Full-width, non-period-folded mean along the stripes, referred to the y=0 line.
+
+    For a stripe coordinate x+slope*y, interpolate each row to x_target-slope*y.
+    Samples outside the finite ROI are omitted, not treated as zero.
+    """
+    h,w=image.shape
+    x=-roi_mm[0]/2+(np.arange(w)+.5)*roi_mm[0]/w
+    y=roi_mm[1]/2-(np.arange(h)+.5)*roi_mm[1]/h
+    total=np.zeros(w);count=np.zeros(w,dtype=int)
+    for row,yy in zip(image,y):
+        values=np.interp(x-slope*yy,x,row[::-1],left=np.nan,right=np.nan)
+        good=np.isfinite(values);total[good]+=values[good];count[good]+=1
+    mean=np.full(w,np.nan);np.divide(total,count,out=mean,where=count>0)
+    return x,mean,count
 
 
 def save_overview(output, records, roi):
@@ -195,7 +232,7 @@ def save_overview(output, records, roi):
     plt.close(fig)
 
 
-def save_phase_figures(output, records, roi):
+def save_phase_figures(output, records, roi, slope=None):
     """One file per phase, with matching profile/image and common scales across phases."""
     import matplotlib
     matplotlib.use('Agg')
@@ -211,6 +248,12 @@ def save_phase_figures(output, records, roi):
             raise ValueError(f'Duplicate result: {key}')
         profiles[key]=np.loadtxt(output/rec['profile_file'],delimiter=',',skiprows=1)
         images[key]=np.load(output/rec['image_file'])
+        if slope is not None:
+            x,mean,count=horizontal_profile(images[key],roi,slope)
+            profiles[key]=np.c_[x,mean,count]
+            name=f'{rec["case"]}_phase{rec["phase"]}_horizontal.csv'
+            np.savetxt(output/name,profiles[key],delimiter=',',
+                header='horizontal_stripe_coordinate_at_y0_mm,relative_incident_field,pixel_count',comments='')
     ymax=max(float(np.nanmax(p[:,1])) for p in profiles.values())
     image_max=max(float(np.quantile(im,.995)) for im in images.values())
     ymax=max(ymax*1.1,1e-10); image_max=max(image_max,1e-10)
@@ -227,8 +270,11 @@ def save_phase_figures(output, records, roi):
             p=profiles[key]; im=images[key]
             axes[0,col].plot(p[:,0],p[:,1],color=colors[phase],label=f'Phase {phase}')
             axes[0,col].set(title=f'{case}: phase {phase} only',
-                xlabel='Folded coordinate normal to grooves (mm)',
+                xlabel=('Stripe-aligned horizontal coordinate at y=0 (mm)' if slope is not None
+                        else 'Folded coordinate normal to grooves (mm)'),
                 ylabel='Relative incident field (uncalibrated)',ylim=(0,ymax))
+            if slope is not None:
+                axes[0,col].set_xlim(-roi[0]/2,roi[0]/2)
             axes[0,col].legend()
             view=axes[1,col].imshow(im[::-1,::-1],origin='lower',aspect='equal',
                 extent=[-roi[0]/2,roi[0]/2,-roi[1]/2,roi[1]/2],vmin=0,vmax=image_max)
@@ -250,7 +296,8 @@ def replot_results(output):
         output=max(candidates,key=lambda p:(p/'summary.json').stat().st_mtime_ns)
     summary=json.loads((output/'summary.json').read_text(encoding='utf-8'))
     config=json.loads((output/'config_used.json').read_text(encoding='utf-8'))
-    files=save_phase_figures(output,summary['records'],config['roi_mm'])
+    files=save_phase_figures(output,summary['records'],config['roi_mm'],
+                            config.get('optics',{}).get('normal_slope',1/3))
     print(f'Created {", ".join(files)} in {output.resolve()}\nReused saved data; no ray tracing was run.')
     return 0
 
@@ -290,6 +337,9 @@ def main(argv=None):
     period=cfg.pitch_mm*(1+q/a)
     print(f'Config: {args.config.resolve()}',flush=True)
     print(f'Renderer: {data["render"]["variant"]}', flush=True)
+    bars=led_layout(data,cfg)
+    print(f'LED bars: {len(bars)}; phase counts: {[sum(p==k for _,p,_ in bars) for k in range(4)]}',flush=True)
+    print(f'Receiver horizontal range: {-data["roi_mm"][0]/2} .. {data["roi_mm"][0]/2} mm',flush=True)
     print(f'LED to vertex {data["led_to_vertex_mm"]} mm; screen {data["screen_from_vertex_mm"]} mm ({data["screen_medium"]})',flush=True)
     print(f'Approximate AIR effective focal length R/(n-1): {cfg.radius_mm/(cfg.ior-1):.6f} mm',flush=True)
     print(f'Approximate folding period: {period:.6f} mm normal to grooves (not a measurement)',flush=True)
@@ -310,6 +360,8 @@ def main(argv=None):
         parser.error('Output directory is not empty. Choose a NEW --output directory to avoid stale results.')
     output.mkdir(parents=True,exist_ok=True)
     (output/'config_used.json').write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding='utf-8')
+    (output/'led_layout.json').write_text(json.dumps([
+        {'index':i,'phase':p,'horizontal_intercept_mm':x} for i,p,x in bars],indent=2),encoding='utf-8')
     mesh=output/'lens.ply';vertices,faces=lens_coordinates(cfg);write_binary_ply(mesh,vertices,faces)
     cases=args.cases or data['cases'];phases=args.phases or list(range(4));records=[]
     warnings=[
@@ -334,8 +386,12 @@ def main(argv=None):
             x,p,count=folded_profile(image,data['roi_mm'],cfg.normal_slope,period)
             np.savetxt(output/(stem+'.csv'),np.c_[x,p,count],delimiter=',',
                        header='normal_coordinate_mm,relative_incident_field,pixel_count',comments='')
+            hx,hp,hc=horizontal_profile(image,data['roi_mm'],cfg.normal_slope)
+            np.savetxt(output/(stem+'_horizontal.csv'),np.c_[hx,hp,hc],delimiter=',',
+                header='horizontal_stripe_coordinate_at_y0_mm,relative_incident_field,pixel_count',comments='')
             records.append({'case':case,'phase':phase,'mean_relative_field':float(image.mean()),
-                'image_file':stem+'.npy','profile_file':stem+'.csv','seconds':time.monotonic()-started})
+                'image_file':stem+'.npy','profile_file':stem+'.csv',
+                'horizontal_profile_file':stem+'_horizontal.csv','seconds':time.monotonic()-started})
             result={'mitsuba_version':mi.__version__,'variant':data['render']['variant'],
                     'mode':args.mode,'render_settings':sample,'warnings':warnings,
                     'approximate_folding_period_normal_mm':period,'records':records,
@@ -343,7 +399,7 @@ def main(argv=None):
             (output/'summary.json').write_text(json.dumps(result,indent=2),encoding='utf-8')
             print(f'Saved {stem}; mean={image.mean():.6g}, {time.monotonic()-started:.1f}s',flush=True)
     save_overview(output,records,data['roi_mm'])
-    phase_files=save_phase_figures(output,records,data['roi_mm'])
+    phase_files=save_phase_figures(output,records,data['roi_mm'],cfg.normal_slope)
     print(f'Complete: {output.resolve()}\nOpen {", ".join(phase_files)} for separate phases, or overview.png for the overlay. See summary.json warnings.')
     return 0
 
