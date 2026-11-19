@@ -7,17 +7,19 @@ from optics import OpticsConfig, lens_coordinates, make_scene
 
 
 def write_binary_ply(path, vertices, faces):
-    # Simple ASCII PLY allows the geometry to be inspected separately.
-    with open(path, "w", encoding="ascii") as f:
-        f.write("ply\nformat ascii 1.0\n")
-        f.write(f"element vertex {len(vertices)}\n")
-        f.write("property float x\nproperty float y\nproperty float z\n")
-        f.write(f"element face {len(faces)}\n")
-        f.write("property list uchar int vertex_indices\nend_header\n")
-        for p in vertices:
-            f.write(f"{p[0]:.9g} {p[1]:.9g} {p[2]:.9g}\n")
-        for tri in faces:
-            f.write(f"3 {tri[0]} {tri[1]} {tri[2]}\n")
+    vertices=np.asarray(vertices,dtype='<f4')
+    faces=np.asarray(faces,dtype='<i4')
+    header=('ply\nformat binary_little_endian 1.0\n'
+            f'element vertex {len(vertices)}\n'
+            'property float x\nproperty float y\nproperty float z\n'
+            f'element face {len(faces)}\n'
+            'property list uchar int vertex_indices\nend_header\n')
+    records=np.empty(len(faces),dtype=[('count','u1'),('indices','<i4',(3,))])
+    records['count']=3;records['indices']=faces
+    with open(path,'wb') as f:
+        f.write(header.encode('ascii'))
+        f.write(vertices.tobytes())
+        f.write(records.tobytes())
 
 
 def main():

@@ -21,6 +21,17 @@ ROOT = Path(__file__).resolve().parent
 CASES = ('baseline', 'mask', 'baffles', 'mask_baffles')
 
 
+def samples_per_pass(data, mode):
+    """Bound wavefront memory without reducing the total sample budget."""
+    total=data['render'][mode]['spp']
+    default=1 if data['render']['variant'].startswith('cuda') else 256
+    requested=data['render'].get('samples_per_pass',default)
+    if isinstance(requested,bool) or not isinstance(requested,int) or requested<=0:
+        raise ValueError('samples_per_pass must be a positive integer')
+    # Mitsuba requires a pass size dividing the total sample budget.
+    return math.gcd(total,min(requested,total))
+
+
 def lens_mesh_config(data, cfg):
     """Merge same-index rear PMMA in optical contact, leaving the crest at z=0."""
     return replace(cfg, thickness_mm=cfg.thickness_mm+data.get('rear_acrylic_mm',0.))
@@ -109,6 +120,7 @@ def load_config(path, mode='preview'):
     render = data['render'][mode]
     if any(not isinstance(render[k], int) or render[k] <= 0 for k in ('width','height','spp')):
         raise ValueError('Render width, height, spp must be positive integers')
+    samples_per_pass(data,mode)
     if abs(render['width']/render['height'] - data['roi_mm'][0]/data['roi_mm'][1]) > .001:
         raise ValueError('Render width/height must match ROI width/height')
     if not isinstance(data['render']['seed'], int) or data['render']['seed'] < 0:
@@ -136,7 +148,7 @@ def scene_dict(mi, data, cfg, mesh, phase, case, mode):
     scene = {
         'type':'scene',
         'integrator':{'type':'ptracer', 'max_depth':data['render']['max_depth'],
-                      'samples_per_pass':min(256,sample['spp']), 'hide_emitters':True},
+                      'samples_per_pass':samples_per_pass(data,mode), 'hide_emitters':True},
         'lens':{'type':'ply','filename':str(mesh.resolve()),'face_normals':True,
                 'bsdf':{'type':'dielectric','int_ior':cfg.ior,'ext_ior':1.}},
         'receiver':{'type':'rectangle',
@@ -421,6 +433,8 @@ def main(argv=None):
     parser.add_argument('--variant', choices=['llvm_ad_rgb', 'cuda_ad_rgb', 'scalar_rgb'],
                         help='Override the renderer backend; scalar_rgb avoids LLVM JIT')
     parser.add_argument('--spp', type=int, help='Override samples per pixel for this run')
+    parser.add_argument('--samples-per-pass',type=int,
+                        help='Maximum spp per pass (GPU default 1); total --spp stays unchanged')
     parser.add_argument('--case',choices=CASES,action='append',dest='cases')
     parser.add_argument('--phase',type=int,choices=range(4),action='append',dest='phases')
     parser.add_argument('--output',type=Path)
@@ -442,6 +456,12 @@ def main(argv=None):
         if args.spp <= 0:
             parser.error('--spp must be positive')
         data['render'][args.mode]['spp'] = args.spp
+    if args.samples_per_pass is not None:
+        if args.samples_per_pass<=0:
+            parser.error('--samples-per-pass must be positive')
+        data['render']['samples_per_pass']=args.samples_per_pass
+    pass_size=samples_per_pass(data,args.mode)
+    data['render']['samples_per_pass']=pass_size
     sample=data['render'][args.mode]
     # This is an approximate folding period, not a measured result.
     q=data['screen_from_vertex_mm']/(cfg.ior if data['screen_medium']=='pmma' else 1.)
@@ -449,6 +469,9 @@ def main(argv=None):
     period=cfg.pitch_mm*(1+q/a)
     print(f'Config: {args.config.resolve()}',flush=True)
     print(f'Renderer: {data["render"]["variant"]}', flush=True)
+    print(f'Sampling: total {sample["spp"]} spp; {pass_size} spp/pass; '
+          f'{sample["spp"]//pass_size} passes; '
+          f'{sample["width"]*sample["height"]*pass_size:,} primary samples/pass',flush=True)
     bars=led_layout(data,cfg)
     print(f'LED bars: {len(bars)}; phase counts: {[sum(p==k for _,p,_ in bars) for k in range(4)]}',flush=True)
     print(f'Receiver horizontal range: {-data["roi_mm"][0]/2} .. {data["roi_mm"][0]/2} mm',flush=True)
@@ -495,7 +518,11 @@ def main(argv=None):
                 scene=mi.load_dict(scene_dict(mi,data,cfg,mesh,phase,case,args.mode))
                 image=np.asarray(mi.render(scene,spp=sample['spp'],seed=data['render']['seed'])).mean(axis=2)*math.pi
             except RuntimeError as exc:
-                print(f'Render failed: {exc}',file=sys.stderr);return 3
+                print(f'Render failed: {exc}\n'
+                      f'Used {pass_size} spp/pass and {sample["spp"]} total spp. '
+                      'For GPU memory errors, retry with --samples-per-pass 1. '
+                      'If already 1, reduce image resolution; lowering total spp alone '
+                      'does not reduce the size of one pass.',file=sys.stderr);return 3
             if not np.isfinite(image).all() or np.max(image)<=0:
                 print('Render contains no finite positive light; do not interpret as a valid barrier.',file=sys.stderr);return 4
             stem=f'{case}_phase{phase}';np.save(output/(stem+'.npy'),image)
@@ -514,6 +541,11 @@ def main(argv=None):
                     'fwhm_mm':None,'crosstalk_percent':None,'reason':'Not validated: use raw outputs and convergence tests.'}
             (output/'summary.json').write_text(json.dumps(result,indent=2),encoding='utf-8')
             print(f'Saved {stem}; mean={image.mean():.6g}, {time.monotonic()-started:.1f}s',flush=True)
+            if data['render']['variant'].startswith('cuda'):
+                # Only between complete phase renders, never in the inner pass loop.
+                del scene
+                dr.sync_thread()
+                dr.flush_malloc_cache()
     save_overview(output,records,data['roi_mm'])
     phase_files=save_phase_figures(output,records,data['roi_mm'],cfg.normal_slope)
     phase_files+=save_phase_overlays(output,records,data['roi_mm'])

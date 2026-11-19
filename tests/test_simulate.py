@@ -45,6 +45,19 @@ def test_full_display_defaults_and_fine_config():
     assert fine['roi_mm'][0]/fine['render']['preview']['width']==.03125
 
 
+def test_gpu_pass_size_caps_work_without_reducing_total_spp():
+    from simulate import samples_per_pass
+    d,_=load_config(CONFIG);d['render']['variant']='cuda_ad_rgb'
+    assert samples_per_pass(d,'preview')==1
+    assert d['render']['preview']['spp']==512
+    d['render']['samples_per_pass']=8
+    assert samples_per_pass(d,'preview')==8
+    d['render']['preview']['spp']=10
+    assert samples_per_pass(d,'preview')==2
+    d['render']['samples_per_pass']=0
+    with pytest.raises(ValueError):samples_per_pass(d,'preview')
+
+
 def test_full_lens_mesh_is_clipped_to_physical_rectangle(tmp_path):
     from dataclasses import replace
     from optics import lens_coordinates
@@ -61,6 +74,7 @@ def test_full_lens_mesh_is_clipped_to_physical_rectangle(tmp_path):
     mi=pytest.importorskip('mitsuba');mi.set_variant('scalar_rgb')
     from run import write_binary_ply
     mesh=tmp_path/'full_rect.ply';write_binary_ply(mesh,v,f)
+    assert mesh.read_bytes().startswith(b'ply\nformat binary_little_endian 1.0\n')
     obj=mi.load_dict({'type':'scene','lens':{'type':'ply','filename':str(mesh),'face_normals':True,
                      'bsdf':{'type':'dielectric','int_ior':1.49,'ext_ior':1.}}})
     front=obj.ray_intersect(mi.Ray3f([0,0,.01],[0,0,-1]))
@@ -122,6 +136,7 @@ def test_mitsuba_scene_and_actual_render(tmp_path):
     from dataclasses import replace
     cfg=replace(cfg,lens_count=40,v_length_mm=60.)
     d['render']['preview']={'width':32,'height':32,'spp':64}
+    d['render']['samples_per_pass']=1
     d['roi_mm']=[8,8]
     mesh=tmp_path/'lens.ply';v,f=lens_coordinates(lens_mesh_config(d,cfg));write_binary_ply(mesh,v,f)
     for case in ['baseline','mask','baffles','mask_baffles']:

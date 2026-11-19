@@ -241,3 +241,18 @@ LEDバーの実寸長は未指定のため、表示高さ312mmを覆う直線バ
 ```
 
 旧±35mm・16本の設定は`configs/previous_13813_rear10_pm35.json`に保存。全画面化・19本化・LED有限長・レンズ外形の変更を含むので、ROIだけを変えた比較ではありません。
+
+## GPUでメモリ不足になる場合
+
+GPU既定の処理単位を1spp/passに変更しました。全体のsppは変えず、512sppを512回に分けます。全画面preview2184×1248の場合、1passのprimary samplesは旧256spp/passの697,761,792から2,725,632になります。固定のシーン・画像バッファもあるため、VRAMが正確に256分の1になるという意味ではありません。GPU11GBでの動作は実機で未検証です。
+
+```powershell
+git pull
+.\.venv\Scripts\python.exe simulate.py --variant cuda_ad_rgb --spp 512 --samples-per-pass 1
+```
+
+`--samples-per-pass`は1回の処理上限で、総サンプル数を割り切る値に調整されます。実際の値とpass数を起動時に表示し、config_used.jsonのrender.samples_per_passへ保存します。指定を省略してもGPUでは1です。CPUでは従来どおり最大256です。サンプル列は分割方法により変わり得るため、前の画像と画素単位では一致しません。
+
+位相計算の間だけGPUの未使用割当キャッシュを解放します。内側の各passでは解放しません。レンズPLYもbinary little endian形式へ変更し、ASCII読み込み警告と読み込み時間を減らしました。形状・材質・解像度・総spp・光学条件は変更しません。
+
+1spp/passでも不足する場合は画像解像度を下げてください。総sppだけを減らしても、1passのメモリは減りません。巨大なfull_display_fine.jsonはGPU11GBで動くことを保証していません。今回の対処は既定プレビュー向けです。`evaluate=true`への自動変更警告はmulti-pass時に引き続き出る場合があります。
