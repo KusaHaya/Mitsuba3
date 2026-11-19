@@ -37,6 +37,11 @@ def lens_mesh_config(data, cfg):
     return replace(cfg, thickness_mm=cfg.thickness_mm+data.get('rear_acrylic_mm',0.))
 
 
+def view_window(data):
+    view=data.get('view',{})
+    return view.get('center_mm',[0.,0.]),view.get('size_mm',data['roi_mm'])
+
+
 def led_layout(data, cfg):
     """(index, phase, horizontal intercept at y=0). Legacy or centered finite four-phase array."""
     array=data.get('led_array')
@@ -121,7 +126,12 @@ def load_config(path, mode='preview'):
     if any(not isinstance(render[k], int) or render[k] <= 0 for k in ('width','height','spp')):
         raise ValueError('Render width, height, spp must be positive integers')
     samples_per_pass(data,mode)
-    if abs(render['width']/render['height'] - data['roi_mm'][0]/data['roi_mm'][1]) > .001:
+    center,window=view_window(data)
+    if len(center)!=2 or len(window)!=2 or not all(math.isfinite(v) for v in [*center,*window]):
+        raise ValueError('View center and size must each contain two finite numbers')
+    if any(v<=0 for v in window) or any(abs(c)+w/2>r/2+1e-8 for c,w,r in zip(center,window,data['roi_mm'])):
+        raise ValueError('View must lie inside the physical receiver')
+    if abs(render['width']/render['height'] - window[0]/window[1]) > .001:
         raise ValueError('Render width/height must match ROI width/height')
     if not isinstance(data['render']['seed'], int) or data['render']['seed'] < 0:
         raise ValueError('Seed must be a nonnegative integer')
@@ -140,6 +150,7 @@ def scene_dict(mi, data, cfg, mesh, phase, case, mode):
     T = mi.ScalarTransform4f
     mm = .001
     width, height = data['roi_mm']
+    (view_x,view_y),(view_width,view_height)=view_window(data)
     screen = data['screen_from_vertex_mm']
     sample = data['render'][mode]
     angle = math.atan(cfg.normal_slope)
@@ -158,9 +169,9 @@ def scene_dict(mi, data, cfg, mesh, phase, case, mode):
         # ptracer cannot connect to an orthographic sensor in the tested backend.
         # Perspective camera remains between the lens and receiver, so it sees the lit side.
         'sensor':{'type':'perspective','fov_axis':'x',
-            'fov':math.degrees(2*math.atan(width/(2*camera_distance))),
-            'to_world':T.look_at(origin=[0,0,(screen-camera_distance)*mm],
-                                target=[0,0,screen*mm],up=[0,1,0]),
+            'fov':math.degrees(2*math.atan(view_width/(2*camera_distance))),
+            'to_world':T.look_at(origin=[view_x*mm,view_y*mm,(screen-camera_distance)*mm],
+                                target=[view_x*mm,view_y*mm,screen*mm],up=[0,1,0]),
             'near_clip':1e-6, 'far_clip':max(1.,screen*mm*10),
             'film':{'type':'hdrfilm','width':sample['width'],'height':sample['height'],
                     'pixel_format':'rgb','component_format':'float32','rfilter':{'type':'box'}},
@@ -225,7 +236,7 @@ def folded_profile(image, roi_mm, slope, period_mm, bins=128):
     y=roi_mm[1]/2-(np.arange(h)+.5)*roi_mm[1]/h
     X,Y=np.meshgrid(x,y)
     u=(X+slope*Y)/math.sqrt(1+slope*slope)
-    index=np.floor((u.ravel()%period_mm)/period_mm*bins).astype(int)
+    index=np.minimum(np.floor((u.ravel()%period_mm)/period_mm*bins).astype(int),bins-1)
     count=np.bincount(index,minlength=bins)
     total=np.bincount(index,weights=image.ravel(),minlength=bins)
     profile=np.full(bins,np.nan)

@@ -256,3 +256,16 @@ git pull
 位相計算の間だけGPUの未使用割当キャッシュを解放します。内側の各passでは解放しません。レンズPLYもbinary little endian形式へ変更し、ASCII読み込み警告と読み込み時間を減らしました。形状・材質・解像度・総spp・光学条件は変更しません。
 
 1spp/passでも不足する場合は画像解像度を下げてください。総sppだけを減らしても、1passのメモリは減りません。巨大なfull_display_fine.jsonはGPU11GBで動くことを保証していません。今回の対処は既定プレビュー向けです。`evaluate=true`への自動変更警告はmulti-pass時に引き続き出る場合があります。
+
+## 細かい画像を連続計算して中央・端を比較
+
+[局所スキャンの説明](docs/tile_scan.md)。全体の19本LEDとレンズ・受光面を保持し、中央・左右端の200mm幅を8mmずつ25枚の画像へ分割します。1枚2048×256、0.00390625mm/画素。既定は75タイル×2条件×4位相＝600計算、64spp、GPU。小さな撮影範囲に向く`path`へ計算法を変えているため、以前の`ptracer`と絶対値・収束を同一とみなさないでください。
+
+```powershell
+# まず中央1枚で動作確認（2条件×4位相）
+.\.venv\Scripts\python.exe scan_tiles.py --region center --limit-tiles 1 --spp 64
+# 中央と左右端を一括計算
+.\.venv\Scripts\python.exe scan_tiles.py --spp 64
+```
+
+中断・再開が可能です。完了後の`summary_bundle.zip`に設定・解析表・全体比較図をまとめます。重なり指標は実機のクロストーク率ではありません。
