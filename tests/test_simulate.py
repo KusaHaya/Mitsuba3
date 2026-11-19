@@ -4,7 +4,7 @@ from pathlib import Path
 import math
 import numpy as np
 import pytest
-from simulate import load_config, folded_profile, scene_dict
+from simulate import load_config, folded_profile, scene_dict, lens_mesh_config
 
 CONFIG = Path(__file__).resolve().parents[1]/'configs/current.json'
 
@@ -18,8 +18,8 @@ def write_config(tmp_path, modify):
 
 def test_vertex_distance_and_screen_are_unambiguous():
     d,cfg=load_config(CONFIG)
-    assert cfg.led_to_flat_mm==123
-    assert cfg.led_to_flat_mm+cfg.thickness_mm==d['led_to_vertex_mm']==125
+    assert cfg.led_to_flat_mm==pytest.approx(136.13)
+    assert cfg.led_to_flat_mm+cfg.thickness_mm==d['led_to_vertex_mm']==138.13
     assert d['screen_from_vertex_mm']==1.5
 
 
@@ -32,6 +32,10 @@ def test_vertex_distance_and_screen_are_unambiguous():
     lambda d:d['led_array'].update(count=9),
     lambda d:d.update(cases=[]),
     lambda d:d['optics'].update(normal_slope=float('nan')),
+    lambda d:d.update(rear_acrylic_mm=-1),
+    lambda d:d.update(rear_acrylic_mm=float('nan')),
+    lambda d:d.update(rear_acrylic_mm=200),
+    lambda d:d['baffles'].update(height_mm=130),
 ])
 def test_invalid_physical_and_sampling_settings_rejected(tmp_path,modify):
     with pytest.raises(ValueError):load_config(write_config(tmp_path,modify))
@@ -49,6 +53,19 @@ def test_profile_respects_camera_orientation_and_preserves_missing_bins():
     assert np.isnan(p[c==0]).all()  # Missing samples must not imply perfect dark regions.
 
 
+def test_contacted_rear_plate_extends_only_flat_side_and_legacy_defaults_to_zero():
+    from optics import lens_coordinates
+    d,cfg=load_config(CONFIG)
+    assert d['rear_acrylic_mm']==10
+    mesh_cfg=lens_mesh_config(d,cfg)
+    vertices,_=lens_coordinates(mesh_cfg)
+    assert np.isclose(vertices[:,2].min(),-.012)
+    assert np.isclose(vertices[:,2].max(),0)
+    assert mesh_cfg.radius_mm==cfg.radius_mm and mesh_cfg.pitch_mm==cfg.pitch_mm
+    legacy=dict(d);legacy.pop('rear_acrylic_mm')
+    assert lens_mesh_config(legacy,cfg).thickness_mm==cfg.thickness_mm
+
+
 def test_mitsuba_scene_and_actual_render(tmp_path):
     mi=pytest.importorskip('mitsuba')
     mi.set_variant('llvm_ad_rgb')
@@ -57,7 +74,7 @@ def test_mitsuba_scene_and_actual_render(tmp_path):
     d,cfg=load_config(CONFIG);d=copy.deepcopy(d)
     d['render']['preview']={'width':32,'height':32,'spp':64}
     d['roi_mm']=[8,8]
-    mesh=tmp_path/'lens.ply';v,f=lens_coordinates(cfg);write_binary_ply(mesh,v,f)
+    mesh=tmp_path/'lens.ply';v,f=lens_coordinates(lens_mesh_config(d,cfg));write_binary_ply(mesh,v,f)
     for case in ['baseline','mask','baffles','mask_baffles']:
         obj=scene_dict(mi,d,cfg,mesh,0,case,'preview')
         assert obj['sensor']['type']=='perspective'

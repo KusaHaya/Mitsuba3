@@ -3,7 +3,7 @@
 VS Codeで設定JSONを編集し、LED → レンズ → 受光面の照射分布を比較する研究用モデルです。
 **入口は `simulate.py`、寸法設定は `configs/current.json` です。**
 
-現在の既定条件は、LED―レンズ凸面頂点125mm、連続4位相LEDの中央を原点、受光面の水平±23mm・上下±4mmです。LEDは16本（各位相4本）、比較条件は仕切りのみ／仕切り＋中心40%開口です。Windowsで確認できた`scalar_rgb`を既定にしています。**
+現在の既定条件は、LED―レンズ凸面頂点138.13mm、LED側に追加PMMA10mmを密着させ、スクリーンは凸面頂点から1.5mmのPMMA内、連続4位相LEDの中央を原点、受光面の水平±23mm・上下±4mmです。LEDは16本（各位相4本）、比較条件は仕切りのみ／仕切り＋中心40%開口です。Windowsで確認できた`scalar_rgb`を既定にしています。**
 
 ## Windows / VS Codeで使う
 
@@ -74,7 +74,8 @@ NVIDIA GPUを利用できる環境では、JSONの`render.variant`を`cuda_ad_rg
 | `optics.normal_slope` | 1/3相当の小数 | 配列の面内法線を(1, slope)と定義。円筒軸はこれに直角 |
 | `optics.led_width_horizontal_mm` | 3.0 | LEDの水平発光幅 |
 | `optics.led_pitch_horizontal_mm` | 24.771175 | LEDバーに直角な中心間隔23.5mmを水平へ換算（縦:横=3:1） |
-| `led_to_vertex_mm` | 125.0 | **LED発光面から凸面頂点まで**。平面入射面までではない |
+| `led_to_vertex_mm` | 138.13 | **LED発光面から凸面頂点まで**。平面入射面までではない |
+| `rear_acrylic_mm` | 10.0 | レンズの平面側に密着した追加PMMAの厚さ。レンズ厚2mmとは別 |
 | `screen_from_vertex_mm` | 1.5 | 凸面頂点から受光面まで |
 | `screen_medium` | `pmma` | `pmma`または`air` |
 | `mask.open_fraction` | 0.4 | 各レンズの中心部の開口率。0.4＝40% |
@@ -201,6 +202,17 @@ VS CodeのF5でも「結果：4位相を別々に表示（再計算なし・最�
 
 ## 2026-11-19 LED間隔の訂正
 
-LEDバーに直角な中心間隔23.5mmから、水平方向を24.771175mmへ訂正しました。既定の125mm・スクリーン1.5mmは維持しています。以前の22.7mmの結果と混同しないでください。
+LEDバーに直角な中心間隔23.5mmから、水平方向を24.771175mmへ訂正しました。訂正直後は125mm・スクリーン1.5mmで比較しました。現在の既定は下の採用設計です。以前の22.7mmの結果と混同しないでください。
 
 設計再計算は `python recalculate_design.py`。計算式、スクリーン位置ごとの幅・中心間隔、仕切り高さの条件は [再計算資料](docs/recalculated_235normal.md) を参照してください。
+
+## 採用設計：138.13mm＋LED側アクリル10mm
+
+`configs/current.json`を更新しました。追加アクリルはレンズ平面側に密着し、同じ屈折率1.49のPMMAとして扱います。内部に仮の空気界面を作らず、メッシュの底面だけをz=-2mmから-12mmへ延長しています。凸面頂点・溝形状は動かしません。実機の微小空隙・接着層は含みません。
+
+`rear_acrylic_mm`を省略した旧設定は0mmとして実行できます。直前の125mm設定は`configs/previous_125_corrected_pitch.json`に保存しました。[今回の条件と近軸値](docs/accepted_13813_rear10.md)を参照してください。
+
+```powershell
+git pull
+.\.venv\Scripts\python.exe simulate.py --variant scalar_rgb --spp 512
+```

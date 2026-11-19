@@ -5,7 +5,7 @@ All user distances are millimeters. Scene geometry is converted to meters.
 """
 from __future__ import annotations
 import argparse
-from dataclasses import fields
+from dataclasses import fields, replace
 from datetime import datetime
 import json
 import math
@@ -19,6 +19,11 @@ from run import write_binary_ply
 
 ROOT = Path(__file__).resolve().parent
 CASES = ('baseline', 'mask', 'baffles', 'mask_baffles')
+
+
+def lens_mesh_config(data, cfg):
+    """Merge same-index rear PMMA in optical contact, leaving the crest at z=0."""
+    return replace(cfg, thickness_mm=cfg.thickness_mm+data.get('rear_acrylic_mm',0.))
 
 
 def led_layout(data, cfg):
@@ -46,6 +51,9 @@ def load_config(path, mode='preview'):
     optics['led_to_flat_mm'] = distance - optics.get('thickness_mm', 2.)
     cfg = OpticsConfig(**optics)
     cfg.validate()
+    rear = data.get('rear_acrylic_mm', 0.)
+    if not math.isfinite(rear) or rear < 0 or rear >= cfg.led_to_flat_mm:
+        raise ValueError('rear_acrylic_mm must be finite, nonnegative and fit before the lens')
     led_layout(data,cfg)
     if not all(math.isfinite(getattr(cfg, f.name)) for f in fields(OpticsConfig)):
         raise ValueError('All optics settings must be finite')
@@ -71,7 +79,7 @@ def load_config(path, mode='preview'):
     normal_pitch = cfg.led_pitch_horizontal_mm / math.sqrt(1+cfg.normal_slope**2)
     if data['baffles']['thickness_mm'] >= normal_pitch:
         raise ValueError('Baffle thickness must be smaller than projected LED pitch')
-    if data['baffles']['height_mm'] >= cfg.led_to_flat_mm:
+    if data['baffles']['height_mm'] >= cfg.led_to_flat_mm - rear:
         raise ValueError('Baffles must not intersect the lens entry face')
     if not data['cases'] or len(set(data['cases'])) != len(data['cases']):
         raise ValueError('cases must be nonempty and contain no duplicates')
@@ -412,7 +420,7 @@ def main(argv=None):
     sample=data['render'][args.mode]
     # This is an approximate folding period, not a measured result.
     q=data['screen_from_vertex_mm']/(cfg.ior if data['screen_medium']=='pmma' else 1.)
-    a=cfg.led_to_flat_mm+cfg.thickness_mm/cfg.ior
+    a=cfg.led_to_flat_mm+cfg.thickness_mm/cfg.ior-data.get('rear_acrylic_mm',0.)*(1-1/cfg.ior)
     period=cfg.pitch_mm*(1+q/a)
     print(f'Config: {args.config.resolve()}',flush=True)
     print(f'Renderer: {data["render"]["variant"]}', flush=True)
@@ -420,6 +428,7 @@ def main(argv=None):
     print(f'LED bars: {len(bars)}; phase counts: {[sum(p==k for _,p,_ in bars) for k in range(4)]}',flush=True)
     print(f'Receiver horizontal range: {-data["roi_mm"][0]/2} .. {data["roi_mm"][0]/2} mm',flush=True)
     print(f'LED to vertex {data["led_to_vertex_mm"]} mm; screen {data["screen_from_vertex_mm"]} mm ({data["screen_medium"]})',flush=True)
+    print(f'Contacted rear PMMA: {data.get("rear_acrylic_mm",0.)} mm (additional to lens substrate)',flush=True)
     print(f'Approximate AIR effective focal length R/(n-1): {cfg.radius_mm/(cfg.ior-1):.6f} mm',flush=True)
     print(f'Approximate folding period: {period:.6f} mm normal to grooves (not a measurement)',flush=True)
     if args.validate_only:
@@ -441,7 +450,10 @@ def main(argv=None):
     (output/'config_used.json').write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding='utf-8')
     (output/'led_layout.json').write_text(json.dumps([
         {'index':i,'phase':p,'horizontal_intercept_mm':x} for i,p,x in bars],indent=2),encoding='utf-8')
-    mesh=output/'lens.ply';vertices,faces=lens_coordinates(cfg);write_binary_ply(mesh,vertices,faces)
+    # Same-index PMMA in optical contact: merge with the lens substrate.
+    # This avoids coincident dielectric faces and a fictitious internal air gap.
+    mesh_cfg=lens_mesh_config(data,cfg)
+    mesh=output/'lens.ply';vertices,faces=lens_coordinates(mesh_cfg);write_binary_ply(mesh,vertices,faces)
     cases=args.cases or data['cases'];phases=args.phases or list(range(4));records=[]
     warnings=[
         'EXPLORATORY: calibration and mesh/pixel/sample convergence not established.',

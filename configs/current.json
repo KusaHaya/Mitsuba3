@@ -1,5 +1,5 @@
 {
-  "description": "Corrected LED center pitch: 23.5mm normal to bars = 24.771175mm horizontal; LED-to-vertex 125mm, screen 1.5mm PMMA. ROI +/-23mm. Idealized, uncalibrated.",
+  "description": "Accepted design: LED-to-convex-vertex 138.13mm; additional 10mm PMMA optically contacted to LED-side lens flat face; screen 1.5mm in PMMA; LED pitch 23.5mm normal = 24.771175mm horizontal. Exploratory, not calibrated.",
   "optics": {
     "pitch_mm": 0.7,
     "radius_mm": 0.5,
@@ -13,7 +13,7 @@
     "led_pitch_horizontal_mm": 24.771175004652306,
     "emitter_radiance": 1.0
   },
-  "led_to_vertex_mm": 125.0,
+  "led_to_vertex_mm": 138.13,
   "screen_from_vertex_mm": 1.5,
   "screen_medium": "pmma",
   "mask": {
@@ -50,5 +50,6 @@
   },
   "led_array": {
     "count": 16
-  }
+  },
+  "rear_acrylic_mm": 10.0
 }
