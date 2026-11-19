@@ -11,7 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 
 
-def geometry(data, distance=None, screen=None):
+def geometry(data, distance=None, screen=None, rear_acrylic_mm=0.):
     o = data['optics']
     n, t, p = o['ior'], o['thickness_mm'], o['pitch_mm']
     d = data['led_to_vertex_mm'] if distance is None else distance
@@ -19,7 +19,7 @@ def geometry(data, distance=None, screen=None):
     nx = 1 / math.sqrt(1 + o['normal_slope'] ** 2)
     # PMMA flat entrance -> curved exit -> air groove -> planar PMMA.
     # Vertex/axis approximation; finite groove sag and aberrations are excluded.
-    a = d - t + t/n
+    a = d - t + t/n - rear_acrylic_mm*(1-1/n)
     q = s / (n if data['screen_medium'] == 'pmma' else 1)
     pitch_h = o['led_pitch_horizontal_mm']
     period_h = p*(1+q/a)/nx
@@ -86,6 +86,15 @@ def main():
         baffle_extended_source_midpoint_block_height_mm=h_extended,
         baffle_note='Geometric midpoint clipping only; not proof of no leakage, '
                     'scatter, image overlap or minimum crosstalk.')
+    # Sensitivity for the rear 10mm acrylic discussed for the physical apparatus.
+    # This is NOT present in the current Mitsuba mesh/scene.
+    rear = 10.
+    result['rear_10mm_acrylic_sensitivity'] = dict(
+        current=geometry(data, rear_acrylic_mm=rear),
+        matched_distance_mm=matched_distance+rear*(1-1/n),
+        matched_screen_mm=n*(a-rear*(1-1/n))/factor,
+        note='Same LED-to-vertex distance; 10mm of air replaced by PMMA '
+             'before the lens. Paraxial only; not rendered in this run.')
     (out/'summary.json').write_text(json.dumps(result,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
     print(json.dumps(result,indent=2,ensure_ascii=False))
 

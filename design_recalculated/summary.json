@@ -185,5 +185,24 @@
   "baffle_center_acceptance_half_angle_deg": 18.970407808486545,
   "baffle_point_source_midpoint_block_height_mm": 29.25531914893617,
   "baffle_extended_source_midpoint_block_height_mm": 32.06900271269088,
-  "baffle_note": "Geometric midpoint clipping only; not proof of no leakage, scatter, image overlap or minimum crosstalk."
+  "baffle_note": "Geometric midpoint clipping only; not proof of no leakage, scatter, image overlap or minimum crosstalk.",
+  "rear_10mm_acrylic_sensitivity": {
+    "current": {
+      "led_to_vertex_mm": 125.0,
+      "screen_from_vertex_mm": 1.5,
+      "led_pitch_horizontal_mm": 24.771175004652306,
+      "reduced_object_mm": 121.05369127516778,
+      "reduced_screen_mm": 1.0067114093959733,
+      "stripe_period_horizontal_mm": 0.7440010471777943,
+      "target_phase_step_horizontal_mm": 0.18600026179444856,
+      "phase_step_horizontal_mm": 0.20600300774507108,
+      "four_step_error_horizontal_mm": 0.08001098380249005,
+      "relative_step_error_percent": 10.754149353148668,
+      "unmasked_support_horizontal_mm": 0.04098920166617166,
+      "masked_support_horizontal_mm": 0.03136491058275186
+    },
+    "matched_distance_mm": 138.12655800575266,
+    "matched_screen_mm": 1.353258306538049,
+    "note": "Same LED-to-vertex distance; 10mm of air replaced by PMMA before the lens. Paraxial only; not rendered in this run."
+  }
 }
