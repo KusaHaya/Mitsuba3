@@ -73,7 +73,7 @@ NVIDIA GPUを利用できる環境では、JSONの`render.variant`を`cuda_ad_rg
 | `optics.ior` | 1.49 | PMMAの屈折率（波長依存なし） |
 | `optics.normal_slope` | 1/3相当の小数 | 配列の面内法線を(1, slope)と定義。円筒軸はこれに直角 |
 | `optics.led_width_horizontal_mm` | 3.0 | LEDの水平発光幅 |
-| `optics.led_pitch_horizontal_mm` | 22.7 | LEDの水平中心間隔 |
+| `optics.led_pitch_horizontal_mm` | 24.771175 | LEDバーに直角な中心間隔23.5mmを水平へ換算（縦:横=3:1） |
 | `led_to_vertex_mm` | 125.0 | **LED発光面から凸面頂点まで**。平面入射面までではない |
 | `screen_from_vertex_mm` | 1.5 | 凸面頂点から受光面まで |
 | `screen_medium` | `pmma` | `pmma`または`air` |
@@ -198,3 +198,9 @@ VS CodeのF5でも「結果：4位相を別々に表示（再計算なし・最�
 `tests/test_simulate.py`では距離基準、無効な設定の拒否、折り畳みの座標・欠測扱い、Mitsubaで4種類の条件を実際に描画できることを確認します。これは物理精度の保証ではありません。
 
 旧コードの説明は[docs/legacy_readme.md](docs/legacy_readme.md)。旧`reproduce_unity.py`の構文エラーと`ptracer`用カメラを修正しましたが、旧解析の数値を検証済み性能として使わないでください。通常は新しい`simulate.py`を使用します。
+
+## 2026-11-19 LED間隔の訂正
+
+LEDバーに直角な中心間隔23.5mmから、水平方向を24.771175mmへ訂正しました。既定の125mm・スクリーン1.5mmは維持しています。以前の22.7mmの結果と混同しないでください。
+
+設計再計算は `python recalculate_design.py`。計算式、スクリーン位置ごとの幅・中心間隔、仕切り高さの条件は [再計算資料](docs/recalculated_235normal.md) を参照してください。

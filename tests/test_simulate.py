@@ -109,7 +109,7 @@ def test_balanced_led_array_center_and_phase_counts():
     assert [sum(p==k for _,p,_ in bars) for k in range(4)]==[4]*4
     central={i:(p,x) for i,p,x in bars if i in range(4)}
     assert [central[i][0] for i in range(4)]==list(range(4))
-    assert np.allclose([central[i][1] for i in range(4)],[-34.05,-11.35,11.35,34.05])
+    assert np.allclose([central[i][1] for i in range(4)],[-37.15676250697846,-12.385587502326153,12.385587502326153,37.15676250697846])
     assert np.isclose(sum(x for _,_,x in bars),0)
     legacy=json.loads((CONFIG.parent/'previous_120_central8mm.json').read_text())
     old=led_layout(legacy,cfg)

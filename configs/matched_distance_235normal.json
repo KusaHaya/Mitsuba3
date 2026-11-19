@@ -1,0 +1,54 @@
+{
+  "description": "Paraxial quarter-period matching candidate, not an optimized or validated physical design. Corrected LED center pitch: 23.5mm normal to bars = 24.771175mm horizontal; LED-to-vertex 125mm, screen 1.5mm PMMA. ROI +/-23mm. Idealized, uncalibrated.",
+  "optics": {
+    "pitch_mm": 0.7,
+    "radius_mm": 0.5,
+    "thickness_mm": 2.0,
+    "ior": 1.49,
+    "normal_slope": 0.3333333333333333,
+    "lens_count": 80,
+    "segments_per_lens": 128,
+    "v_length_mm": 60.0,
+    "led_width_horizontal_mm": 3.0,
+    "led_pitch_horizontal_mm": 24.771175004652306,
+    "emitter_radiance": 1.0
+  },
+  "led_to_vertex_mm": 134.83796740172582,
+  "screen_from_vertex_mm": 1.5,
+  "screen_medium": "pmma",
+  "mask": {
+    "open_fraction": 0.4,
+    "z_mm": 0.001
+  },
+  "baffles": {
+    "height_mm": 32.0,
+    "thickness_mm": 1.5
+  },
+  "roi_mm": [
+    46.0,
+    8.0
+  ],
+  "cases": [
+    "baffles",
+    "mask_baffles"
+  ],
+  "render": {
+    "variant": "scalar_rgb",
+    "threads": 8,
+    "seed": 17,
+    "max_depth": 12,
+    "preview": {
+      "width": 1472,
+      "height": 256,
+      "spp": 512
+    },
+    "quality": {
+      "width": 2944,
+      "height": 512,
+      "spp": 2048
+    }
+  },
+  "led_array": {
+    "count": 16
+  }
+}

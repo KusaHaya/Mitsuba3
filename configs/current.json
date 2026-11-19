@@ -1,5 +1,5 @@
 {
-  "description": "125mm LED-to-convex-vertex; ROI centered between central phase 0..3 bars; x=-23..23mm, y=-4..4mm. Idealized geometry, not calibrated.",
+  "description": "Corrected LED center pitch: 23.5mm normal to bars = 24.771175mm horizontal; LED-to-vertex 125mm, screen 1.5mm PMMA. ROI +/-23mm. Idealized, uncalibrated.",
   "optics": {
     "pitch_mm": 0.7,
     "radius_mm": 0.5,
@@ -10,7 +10,7 @@
     "segments_per_lens": 128,
     "v_length_mm": 60.0,
     "led_width_horizontal_mm": 3.0,
-    "led_pitch_horizontal_mm": 22.7,
+    "led_pitch_horizontal_mm": 24.771175004652306,
     "emitter_radiance": 1.0
   },
   "led_to_vertex_mm": 125.0,
