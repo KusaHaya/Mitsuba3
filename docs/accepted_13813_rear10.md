@@ -14,7 +14,7 @@
 | LED水平幅 | 3mm |
 | 開口マスク | 中心40% |
 | 仕切り | 高さ32mm、厚み1.5mm（変更なし） |
-| 光源・ROI | 16本、4本/位相、水平±23mm・上下±4mm |
+| 光源・ROI | 16本、4本/位相、水平±35mm・上下±4mm |
 
 ## 形状と換算
 
@@ -61,3 +61,7 @@ git pull
 受光面の照射分布を計算するモデル。実LCD、液晶応答、USB同期、実スクリーンの散乱、仕切り反射は含まない。画像の重なり指標は実機クロストーク率ではない。512spp単回は収束確認ではない。
 
 スクリーン位置別の再計算は`python recalculate_design.py`。`design_recalculated/screen_sweep.csv`と`summary.json`はcurrent.jsonの現在値を反映する。
+
+## 受光範囲の更新
+
+World xを±35mmへ拡張。preview2240×256、quality4480×512、レンズ120周期。既定比較は仕切りあり／仕切り＋マスク。LED16本、各位相4本は維持。旧±23mm設定はconfigs/previous_13813_rear10_pm23.json。

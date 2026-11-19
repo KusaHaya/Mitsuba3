@@ -23,6 +23,18 @@ def test_vertex_distance_and_screen_are_unambiguous():
     assert d['screen_from_vertex_mm']==1.5
 
 
+def test_default_pm35_comparison_preserves_spatial_sampling():
+    d,cfg=load_config(CONFIG)
+    assert d['cases']==['baffles','mask_baffles']
+    assert d['roi_mm']==[70.,8.]
+    assert cfg.lens_count==120
+    for mode,expected in [('preview',.03125),('quality',.015625)]:
+        render=d['render'][mode]
+        assert d['roi_mm'][0]/render['width']==pytest.approx(expected)
+        assert d['roi_mm'][1]/render['height']==pytest.approx(expected)
+    assert cfg.v_length_mm==60 and d['led_array']['count']==16
+
+
 @pytest.mark.parametrize('modify',[
     lambda d:d.update(led_to_vertex_mm=1),
     lambda d:d['mask'].update(open_fraction=1.1),

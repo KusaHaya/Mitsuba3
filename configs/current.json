@@ -1,12 +1,12 @@
 {
-  "description": "Accepted design: LED-to-convex-vertex 138.13mm; additional 10mm PMMA optically contacted to LED-side lens flat face; screen 1.5mm in PMMA; LED pitch 23.5mm normal = 24.771175mm horizontal. Exploratory, not calibrated.",
+  "description": "Accepted design, World x +/-35mm and y +/-4mm. Default comparison: baffles vs mask_baffles. LED-to-vertex138.13mm, contacted rearPMMA10mm, screen1.5mm inPMMA, LEDnormalpitch23.5mm. Same spatial pixel size as prior +/-23mm ROI. Exploratory, not calibrated.",
   "optics": {
     "pitch_mm": 0.7,
     "radius_mm": 0.5,
     "thickness_mm": 2.0,
     "ior": 1.49,
     "normal_slope": 0.3333333333333333,
-    "lens_count": 80,
+    "lens_count": 120,
     "segments_per_lens": 128,
     "v_length_mm": 60.0,
     "led_width_horizontal_mm": 3.0,
@@ -25,7 +25,7 @@
     "thickness_mm": 1.5
   },
   "roi_mm": [
-    46.0,
+    70.0,
     8.0
   ],
   "cases": [
@@ -38,12 +38,12 @@
     "seed": 17,
     "max_depth": 12,
     "preview": {
-      "width": 1472,
+      "width": 2240,
       "height": 256,
       "spp": 512
     },
     "quality": {
-      "width": 2944,
+      "width": 4480,
       "height": 512,
       "spp": 2048
     }
