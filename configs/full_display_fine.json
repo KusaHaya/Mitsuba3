@@ -1,0 +1,62 @@
+{
+  "description": "VERY LARGE full display at previous preview sampling0.03125mm/pixel. Expect high RAM/time/disk use. Full 546x312mm receiver and rectangular lens outline. 19 consecutive centered bars; leftmost phase0 -> counts5/5/5/4. Bar length assumed to span display height312mm. Preview0.25mm pixels: full-field coverage only, not narrow-image width evaluation. Accepted optical distances unchanged.",
+  "optics": {
+    "pitch_mm": 0.7,
+    "radius_mm": 0.5,
+    "thickness_mm": 2.0,
+    "ior": 1.49,
+    "normal_slope": 0.3333333333333333,
+    "lens_count": 900,
+    "segments_per_lens": 128,
+    "v_length_mm": 480.0,
+    "led_width_horizontal_mm": 3.0,
+    "led_pitch_horizontal_mm": 24.771175004652306,
+    "emitter_radiance": 1.0
+  },
+  "led_to_vertex_mm": 138.13,
+  "screen_from_vertex_mm": 1.5,
+  "screen_medium": "pmma",
+  "mask": {
+    "open_fraction": 0.4,
+    "z_mm": 0.001
+  },
+  "baffles": {
+    "height_mm": 32.0,
+    "thickness_mm": 1.5
+  },
+  "roi_mm": [
+    546.0,
+    312.0
+  ],
+  "cases": [
+    "baffles",
+    "mask_baffles"
+  ],
+  "render": {
+    "variant": "scalar_rgb",
+    "threads": 8,
+    "seed": 17,
+    "max_depth": 12,
+    "preview": {
+      "width": 17472,
+      "height": 9984,
+      "spp": 512
+    },
+    "quality": {
+      "width": 17472,
+      "height": 9984,
+      "spp": 2048
+    }
+  },
+  "led_array": {
+    "count": 19,
+    "layout": "centered",
+    "first_phase": 0,
+    "bar_length_mm": 328.87687665751145
+  },
+  "rear_acrylic_mm": 10.0,
+  "lens_outline_mm": [
+    546.0,
+    312.0
+  ]
+}

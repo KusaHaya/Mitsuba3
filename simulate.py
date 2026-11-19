@@ -27,12 +27,22 @@ def lens_mesh_config(data, cfg):
 
 
 def led_layout(data, cfg):
-    """(index, phase, horizontal intercept at y=0). Optional balanced four-phase array."""
+    """(index, phase, horizontal intercept at y=0). Legacy or centered finite four-phase array."""
     array=data.get('led_array')
     if array is None:
         return [(i,i%4,i*cfg.led_pitch_horizontal_mm)
                 for i in range(-cfg.led_count_each_side,cfg.led_count_each_side+1)]
     count=array['count']
+    if array.get('layout') not in (None,'centered'):
+        raise ValueError('Unknown LED array layout')
+    if array.get('layout') == 'centered':
+        if isinstance(count,bool) or not isinstance(count,int) or count<4:
+            raise ValueError('Centered led_array.count must be an integer >= 4')
+        first=array.get('first_phase',0)
+        if isinstance(first,bool) or not isinstance(first,int) or first not in range(4):
+            raise ValueError('led_array.first_phase must be 0..3')
+        return [(i,(i+first)%4,(i-(count-1)/2)*cfg.led_pitch_horizontal_mm)
+                for i in range(count)]
     if not isinstance(count,int) or count<4 or count%4:
         raise ValueError('led_array.count must be a positive multiple of four')
     start=2-count//2
@@ -55,6 +65,16 @@ def load_config(path, mode='preview'):
     if not math.isfinite(rear) or rear < 0 or rear >= cfg.led_to_flat_mm:
         raise ValueError('rear_acrylic_mm must be finite, nonnegative and fit before the lens')
     led_layout(data,cfg)
+    array=data.get('led_array',{})
+    bar_length=array.get('bar_length_mm',cfg.v_length_mm)
+    if not math.isfinite(bar_length) or bar_length<=0:
+        raise ValueError('led_array.bar_length_mm must be finite and positive')
+    outline=data.get('lens_outline_mm')
+    if outline is not None:
+        if len(outline)!=2 or not all(math.isfinite(x) and x>0 for x in outline):
+            raise ValueError('lens_outline_mm requires two finite positive dimensions')
+        if any(a<b for a,b in zip(outline,data['roi_mm'])):
+            raise ValueError('Lens outline must contain the receiving ROI')
     if not all(math.isfinite(getattr(cfg, f.name)) for f in fields(OpticsConfig)):
         raise ValueError('All optics settings must be finite')
     positive = [distance, data['screen_from_vertex_mm'], *data['roi_mm'],
@@ -135,15 +155,19 @@ def scene_dict(mi, data, cfg, mesh, phase, case, mode):
             'sampler':{'type':'independent','sample_count':sample['spp']}}
     }
     bars=led_layout(data,cfg)
+    array=data.get('led_array',{})
+    bar_length=array.get('bar_length_mm',cfg.v_length_mm)
+    centered_bars=array.get('layout')=='centered'
     for number,(i,led_phase,horizontal_position) in enumerate(bars):
         if led_phase != phase:
             continue
         u = horizontal_position*nx
+        cx,cy=(horizontal_position,0.) if centered_bars else (nx*u,ny*u)
         scene[f'led_{number}']={
             'type':'rectangle',
-            'to_world':T.translate([nx*u*mm,ny*u*mm,-data['led_to_vertex_mm']*mm])
+            'to_world':T.translate([cx*mm,cy*mm,-data['led_to_vertex_mm']*mm])
                 @ T.rotate([0,0,1],math.degrees(angle))
-                @ T.scale([cfg.led_width_horizontal_mm*nx*mm/2,cfg.v_length_mm*mm/2,1]),
+                @ T.scale([cfg.led_width_horizontal_mm*nx*mm/2,bar_length*mm/2,1]),
             'emitter':{'type':'area','radiance':cfg.emitter_radiance}}
     if data['screen_medium']=='pmma':
         # Ideal incident-irradiance plane inside PMMA, NOT a physical diffuser/LCD stack.
@@ -172,11 +196,12 @@ def scene_dict(mi, data, cfg, mesh, phase, case, mode):
         wall_positions += [bars[-1][2]+cfg.led_pitch_horizontal_mm/2]
         for j,position in enumerate(wall_positions):
             u=position*nx
+            cx,cy=(position,0.) if centered_bars else (nx*u,ny*u)
             scene[f'baffle_{j}']={
                 'type':'cube',
-                'to_world':T.translate([nx*u*mm,ny*u*mm,(-data['led_to_vertex_mm']+h/2)*mm])
+                'to_world':T.translate([cx*mm,cy*mm,(-data['led_to_vertex_mm']+h/2)*mm])
                     @ T.rotate([0,0,1],math.degrees(angle))
-                    @ T.scale([thick*mm/2,cfg.v_length_mm*mm/2,h*mm/2]),
+                    @ T.scale([thick*mm/2,bar_length*mm/2,h*mm/2]),
                 'bsdf':{'type':'diffuse','reflectance':0.}}
     return scene
 
@@ -453,7 +478,7 @@ def main(argv=None):
     # Same-index PMMA in optical contact: merge with the lens substrate.
     # This avoids coincident dielectric faces and a fictitious internal air gap.
     mesh_cfg=lens_mesh_config(data,cfg)
-    mesh=output/'lens.ply';vertices,faces=lens_coordinates(mesh_cfg);write_binary_ply(mesh,vertices,faces)
+    mesh=output/'lens.ply';vertices,faces=lens_coordinates(mesh_cfg, data.get('lens_outline_mm'));write_binary_ply(mesh,vertices,faces)
     cases=args.cases or data['cases'];phases=args.phases or list(range(4));records=[]
     warnings=[
         'EXPLORATORY: calibration and mesh/pixel/sample convergence not established.',

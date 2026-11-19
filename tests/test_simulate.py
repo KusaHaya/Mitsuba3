@@ -24,7 +24,7 @@ def test_vertex_distance_and_screen_are_unambiguous():
 
 
 def test_default_pm35_comparison_preserves_spatial_sampling():
-    d,cfg=load_config(CONFIG)
+    d,cfg=load_config(CONFIG.parent/'previous_13813_rear10_pm35.json')
     assert d['cases']==['baffles','mask_baffles']
     assert d['roi_mm']==[70.,8.]
     assert cfg.lens_count==120
@@ -35,13 +35,48 @@ def test_default_pm35_comparison_preserves_spatial_sampling():
     assert cfg.v_length_mm==60 and d['led_array']['count']==16
 
 
+def test_full_display_defaults_and_fine_config():
+    d,cfg=load_config(CONFIG)
+    assert d['roi_mm']==[546.,312.]
+    assert d['lens_outline_mm']==[546.,312.]
+    assert d['cases']==['baffles','mask_baffles']
+    assert d['roi_mm'][0]/d['render']['preview']['width']==.25
+    fine,_=load_config(CONFIG.parent/'full_display_fine.json')
+    assert fine['roi_mm'][0]/fine['render']['preview']['width']==.03125
+
+
+def test_full_lens_mesh_is_clipped_to_physical_rectangle(tmp_path):
+    from dataclasses import replace
+    from optics import lens_coordinates
+    d,cfg=load_config(CONFIG)
+    # Fewer samples suffice to validate the clipping geometry.
+    cfg=replace(lens_mesh_config(d,cfg),segments_per_lens=4)
+    v,f=lens_coordinates(cfg,d['lens_outline_mm'])
+    assert np.max(abs(v[:,0]))<=.273001
+    assert np.max(abs(v[:,1]))<=.156001
+    assert np.isclose(np.max(v[:,0]),.273,atol=1e-6)
+    assert np.isclose(np.max(v[:,1]),.156,atol=1e-6)
+    assert np.isclose(v[:,2].min(),-.012)
+    assert np.isfinite(v).all() and f.min()>=0 and f.max()<len(v)
+    mi=pytest.importorskip('mitsuba');mi.set_variant('scalar_rgb')
+    from run import write_binary_ply
+    mesh=tmp_path/'full_rect.ply';write_binary_ply(mesh,v,f)
+    obj=mi.load_dict({'type':'scene','lens':{'type':'ply','filename':str(mesh),'face_normals':True,
+                     'bsdf':{'type':'dielectric','int_ior':1.49,'ext_ior':1.}}})
+    front=obj.ray_intersect(mi.Ray3f([0,0,.01],[0,0,-1]))
+    rear=obj.ray_intersect(mi.Ray3f([0,0,-.1],[0,0,1]))
+    assert front.is_valid() and rear.is_valid()
+    assert np.isclose(float(front.p.z),0,atol=1e-6) and float(front.n.z)>.5
+    assert np.isclose(float(rear.p.z),-.012,atol=1e-6) and float(rear.n.z)<-.5
+
+
 @pytest.mark.parametrize('modify',[
     lambda d:d.update(led_to_vertex_mm=1),
     lambda d:d['mask'].update(open_fraction=1.1),
     lambda d:d['baffles'].update(height_mm=999),
     lambda d:d['render']['preview'].update(height=128),
     lambda d:d['optics'].update(lens_count=3),
-    lambda d:d['led_array'].update(count=9),
+    lambda d:d['led_array'].update(count=3),
     lambda d:d.update(cases=[]),
     lambda d:d['optics'].update(normal_slope=float('nan')),
     lambda d:d.update(rear_acrylic_mm=-1),
@@ -84,6 +119,8 @@ def test_mitsuba_scene_and_actual_render(tmp_path):
     from optics import lens_coordinates
     from run import write_binary_ply
     d,cfg=load_config(CONFIG);d=copy.deepcopy(d)
+    from dataclasses import replace
+    cfg=replace(cfg,lens_count=40,v_length_mm=60.)
     d['render']['preview']={'width':32,'height':32,'spp':64}
     d['roi_mm']=[8,8]
     mesh=tmp_path/'lens.ply';v,f=lens_coordinates(lens_mesh_config(d,cfg));write_binary_ply(mesh,v,f)
@@ -131,15 +168,20 @@ def test_phase_figures_do_not_mix_phases_and_keep_scales(tmp_path, monkeypatch):
     assert all((tmp_path/name).stat().st_size>0 for name in captured)
 
 
-def test_balanced_led_array_center_and_phase_counts():
+def test_centered_19_led_array_and_legacy_layouts():
     from simulate import led_layout
     d,cfg=load_config(CONFIG);bars=led_layout(d,cfg)
-    assert len(bars)==16
-    assert [sum(p==k for _,p,_ in bars) for k in range(4)]==[4]*4
-    central={i:(p,x) for i,p,x in bars if i in range(4)}
-    assert [central[i][0] for i in range(4)]==list(range(4))
-    assert np.allclose([central[i][1] for i in range(4)],[-37.15676250697846,-12.385587502326153,12.385587502326153,37.15676250697846])
-    assert np.isclose(sum(x for _,_,x in bars),0)
+    assert len(bars)==19
+    assert [sum(p==k for _,p,_ in bars) for k in range(4)]==[5,5,5,4]
+    assert bars[0][1]==0 and bars[9][2]==0
+    assert np.isclose(bars[0][2],-9*24.771175004652306)
+    assert np.isclose(bars[-1][2],9*24.771175004652306)
+    assert np.allclose(np.diff([x for _,_,x in bars]),24.771175004652306)
+    oldd,oldcfg=load_config(CONFIG.parent/'previous_13813_rear10_pm35.json')
+    old=led_layout(oldd,oldcfg)
+    assert len(old)==16 and [sum(p==k for _,p,_ in old) for k in range(4)]==[4]*4
+    central={i:x for i,_,x in old if i in range(4)}
+    assert np.allclose([central[i] for i in range(4)],[-37.15676250697846,-12.385587502326153,12.385587502326153,37.15676250697846])
     legacy=json.loads((CONFIG.parent/'previous_120_central8mm.json').read_text())
     old=led_layout(legacy,cfg)
     assert len(old)==9 and [sum(p==k for _,p,_ in old) for k in range(4)]==[3,2,2,2]

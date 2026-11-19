@@ -1,14 +1,14 @@
 {
-  "description": "Accepted design, World x +/-35mm and y +/-4mm. Default comparison: baffles vs mask_baffles. LED-to-vertex138.13mm, contacted rearPMMA10mm, screen1.5mm inPMMA, LEDnormalpitch23.5mm. Same spatial pixel size as prior +/-23mm ROI. Exploratory, not calibrated.",
+  "description": "Full 546x312mm receiver and rectangular lens outline. 19 consecutive centered bars; leftmost phase0 -> counts5/5/5/4. Bar length assumed to span display height312mm. Preview0.25mm pixels: full-field coverage only, not narrow-image width evaluation. Accepted optical distances unchanged.",
   "optics": {
     "pitch_mm": 0.7,
     "radius_mm": 0.5,
     "thickness_mm": 2.0,
     "ior": 1.49,
     "normal_slope": 0.3333333333333333,
-    "lens_count": 120,
+    "lens_count": 900,
     "segments_per_lens": 128,
-    "v_length_mm": 60.0,
+    "v_length_mm": 480.0,
     "led_width_horizontal_mm": 3.0,
     "led_pitch_horizontal_mm": 24.771175004652306,
     "emitter_radiance": 1.0
@@ -25,8 +25,8 @@
     "thickness_mm": 1.5
   },
   "roi_mm": [
-    70.0,
-    8.0
+    546.0,
+    312.0
   ],
   "cases": [
     "baffles",
@@ -38,18 +38,25 @@
     "seed": 17,
     "max_depth": 12,
     "preview": {
-      "width": 2240,
-      "height": 256,
+      "width": 2184,
+      "height": 1248,
       "spp": 512
     },
     "quality": {
-      "width": 4480,
-      "height": 512,
+      "width": 4368,
+      "height": 2496,
       "spp": 2048
     }
   },
   "led_array": {
-    "count": 16
+    "count": 19,
+    "layout": "centered",
+    "first_phase": 0,
+    "bar_length_mm": 328.87687665751145
   },
-  "rear_acrylic_mm": 10.0
+  "rear_acrylic_mm": 10.0,
+  "lens_outline_mm": [
+    546.0,
+    312.0
+  ]
 }

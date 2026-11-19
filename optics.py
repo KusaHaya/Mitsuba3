@@ -38,7 +38,7 @@ class OpticsConfig:
             raise ValueError("Invalid receiver dimensions")
 
 
-def lens_coordinates(cfg):
+def lens_coordinates(cfg, outline_mm=None):
     """Closed watertight prism with repeating circular grooves (u,v coordinates).
 
     Winding on upper surface points toward +z; bottom toward -z.
@@ -48,6 +48,18 @@ def lens_coordinates(cfg):
     n = cfg.lens_count * cfg.segments_per_lens
     u = np.linspace(-cfg.lens_count * cfg.pitch_mm / 2,
                     cfg.lens_count * cfg.pitch_mm / 2, n + 1)
+    if outline_mm is not None:
+        theta=math.atan(cfg.normal_slope)
+        nx,ny=math.cos(theta),math.sin(theta)
+        width,height=outline_mm
+        corners=np.array([[-width/2,-height/2],[width/2,-height/2],
+                          [width/2,height/2],[-width/2,height/2]])
+        cu=corners @ np.array([nx,ny])
+        # Include rectangle corners to make its clipped outline piecewise exact.
+        # Retreat extrema by 0.1um to avoid zero-area endpoint cross sections.
+        lo,hi=cu.min()+1e-4,cu.max()-1e-4
+        u=np.unique(np.r_[u[(u>lo)&(u<hi)],cu[(cu>lo)&(cu<hi)],lo,hi])
+        n=len(u)-1
     offset = (u + cfg.pitch_mm / 2) % cfg.pitch_mm - cfg.pitch_mm / 2
     # Keep endpoints at seam; their heights match the neighboring grooves.
     top_z = -cfg.radius_mm + np.sqrt(
@@ -55,12 +67,23 @@ def lens_coordinates(cfg):
     theta = math.atan(cfg.normal_slope)
     normal = np.array([math.cos(theta), math.sin(theta)])
     tangent = np.array([-math.sin(theta), math.cos(theta)])
-    v_edges = [-cfg.v_length_mm / 2, cfg.v_length_mm / 2]
+    if outline_mm is None:
+        v_edges=[np.full(len(u),-cfg.v_length_mm/2),np.full(len(u),cfg.v_length_mm/2)]
+    else:
+        # Clip every u cross section against the world-axis rectangle.
+        lower=np.full(len(u),-np.inf);upper=np.full(len(u),np.inf)
+        for a,b,half in [(normal[0],tangent[0],outline_mm[0]/2),
+                         (normal[1],tangent[1],outline_mm[1]/2)]:
+            if abs(b)>1e-12:
+                v1=(-half-a*u)/b;v2=(half-a*u)/b
+                lower=np.maximum(lower,np.minimum(v1,v2))
+                upper=np.minimum(upper,np.maximum(v1,v2))
+        v_edges=[lower,upper]
     verts = []
     for z_layer in (0, 1):  # top, bottom
         for v in v_edges:
             for k, uk in enumerate(u):
-                xy = normal * uk + tangent * v
+                xy = normal * uk + tangent * v[k]
                 z = top_z[k] if z_layer == 0 else -cfg.thickness_mm
                 verts.append([xy[0] * MM, xy[1] * MM, z * MM])
     stride = n + 1
