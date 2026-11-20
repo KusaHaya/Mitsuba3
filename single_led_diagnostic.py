@@ -30,6 +30,17 @@ def isolate_source(scene,index):
     return {k:v for k,v in scene.items() if not k.startswith('led_') or k==key}
 
 
+def shorten_source(scene,index,length,original_length,transform):
+    """Change only the selected emitter's local long axis, retaining every baffle."""
+    if length is None:return scene
+    if not math.isfinite(length) or length<=0 or length>original_length:
+        raise ValueError('LED length must be positive and no longer than the original bar')
+    key=f'led_{index}'
+    result=dict(scene);result[key]=dict(scene[key])
+    result[key]['to_world']=scene[key]['to_world'] @ transform.scale([1.,length/original_length,1.])
+    return result
+
+
 def analyze(folder):
     import matplotlib
     matplotlib.use('Agg')
@@ -53,12 +64,13 @@ def analyze(folder):
                     rows.append(dict(led=led['index'],phase=led['phase'],case=case,spp=spp,seed=seed,
                                      view_x_mm=m['tile']['center_mm'][0],led_x_mm=led['x_mm'],
                                      mean=float(field.mean()),nonzero_fraction=float(np.count_nonzero(field)/field.size),
+                                     emitting_length_mm=m.get('emitting_length_mm',d.get('led_array',{}).get('bar_length_mm',d['optics']['v_length_mm'])),
                                      **stat,warning='local folded estimate; not crosstalk or converged PSF'))
                     x,h,c=horizontal_profile(field,m['tile']['size_mm'],slope)
                     ax.plot(x+m['tile']['center_mm'][0],h,label=f'{spp} spp, seed {seed}',alpha=.75,lw=.8)
                     profiles.extend(dict(run=name,x_mm=float(xx+m['tile']['center_mm'][0]),field=float(vv)) for xx,vv in zip(x,h))
             ax.set_title(f'{case}: LED {led["index"]}, phase {led["phase"]}');ax.set_xlabel('Screen stripe-aligned x (mm)');ax.grid(alpha=.2);ax.legend(fontsize=7)
-    fig.suptitle('One emitting LED per run; all original baffles retained; uncalibrated')
+    fig.suptitle(f"One LED; emitting length {m.get('emitting_length_mm', d.get('led_array',{}).get('bar_length_mm','original'))} mm; all baffles retained")
     fig.tight_layout();fig.savefig(folder/'profiles.png',dpi=140);plt.close(fig)
     for name,rr in [('metrics.csv',rows),('profiles.csv',profiles)]:
         with (folder/name).open('w',newline='',encoding='utf-8-sig') as f:
@@ -74,6 +86,7 @@ def main(argv=None):
     p.add_argument('--variant',choices=['cuda_ad_rgb','llvm_ad_rgb','scalar_rgb'],default='cuda_ad_rgb')
     p.add_argument('--led',type=int,action='append',help='Zero-based physical LED index, repeatable')
     p.add_argument('--view-x',type=float,default=0.)
+    p.add_argument('--led-length-mm',type=float,help='Emitting segment length only; all baffles stay unchanged')
     p.add_argument('--spp',type=int,action='append',help='Repeat to compare sample counts; default 256')
     p.add_argument('--seed',type=int,action='append',help='Independent repeats; default 17')
     p.add_argument('--pixels',type=int,default=512)
@@ -86,6 +99,9 @@ def main(argv=None):
     try:
         d,cfg=load_config(args.config);leds=select_leds(d,cfg,args.led)
         spp=sorted(set(args.spp or [256]));seeds=sorted(set(args.seed or [17]))
+        original_length=d.get('led_array',{}).get('bar_length_mm',cfg.v_length_mm)
+        if args.led_length_mm is not None and (not math.isfinite(args.led_length_mm) or not 0<args.led_length_mm<=original_length):
+            raise ValueError('LED length must be positive and no longer than the original bar')
         if min(spp)<1 or min(seeds)<0 or max(seeds)>=2**32 or args.samples_per_pass<1:raise ValueError('Invalid sampling settings')
         if args.pixels<16 or args.pixels%8:raise ValueError('pixels must be >=16 and divisible by 8')
         if not math.isfinite(args.view_x) or abs(args.view_x)+1>d['roi_mm'][0]/2:raise ValueError('View outside screen')
@@ -94,9 +110,11 @@ def main(argv=None):
     d['render']['variant']=args.variant
     manifest=dict(physical_config=d,leds=leds,tile=tile,spp=spp,seeds=seeds,
                   samples_per_pass=args.samples_per_pass,integrator='path',
+                  emitting_length_mm=args.led_length_mm if args.led_length_mm is not None else original_length,
                   assumption='Diagnose one source; no assumption that different sources overlap')
     print(json.dumps(dict(leds=leds,view_x=args.view_x,spp=spp,seeds=seeds,
-                         jobs=2*len(leds)*len(spp)*len(seeds),variant=args.variant),indent=2))
+                         jobs=2*len(leds)*len(spp)*len(seeds),variant=args.variant,
+                         emitting_length_mm=manifest['emitting_length_mm']),indent=2))
     if args.plan_only:return 0
     folder=args.output or ROOT/'results'/('single_led_'+datetime.now().strftime('%Y%m%d_%H%M%S_%f'))
     if folder.exists() and any(folder.iterdir()):p.error('Output folder is not empty')
@@ -111,6 +129,7 @@ def main(argv=None):
     for led in leds:
         for case in ['baffles','mask_baffles']:
             obj=isolate_source(scene_dict(mi,local,cfg,mesh,led['phase'],case,'preview'),led['index'])
+            obj=shorten_source(obj,led['index'],args.led_length_mm,original_length,mi.ScalarTransform4f)
             obj['integrator']={'type':'path','max_depth':d['render']['max_depth'],'hide_emitters':True}
             assert len([k for k in obj if k.startswith('led_')])==1
             scene=mi.load_dict(obj)
