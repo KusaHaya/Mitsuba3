@@ -33,7 +33,7 @@
     "mask_baffles"
   ],
   "render": {
-    "variant": "scalar_rgb",
+    "variant": "cuda_ad_rgb",
     "threads": 8,
     "seed": 17,
     "max_depth": 12,
@@ -46,7 +46,9 @@
       "width": 4368,
       "height": 2496,
       "spp": 2048
-    }
+    },
+    "scene_scale": 1000.0,
+    "origin_mode": "view_center"
   },
   "led_array": {
     "count": 19,
@@ -58,5 +60,24 @@
   "lens_outline_mm": [
     546.0,
     312.0
-  ]
+  ],
+  "model_revision": "2026-11-20-interface-safe-v2",
+  "observer_evaluation": {
+    "purpose": "Projection metadata only; not a physical LCD/diffuser simulation",
+    "acrylic_after_screen_mm": 5.0,
+    "acrylic_ior": 1.49,
+    "panel_back_glass_mm": 1.0,
+    "panel_back_glass_ior": 1.5,
+    "panel_glass_assumed": true,
+    "eye_separation_mm": 65.0,
+    "eye_separation_assumed": true,
+    "distances_from_lcd_mm": [
+      800.0,
+      900.0,
+      1000.0,
+      1100.0,
+      1200.0
+    ],
+    "screen_model": "ideal irradiance receiver; angular scattering unmeasured"
+  }
 }
