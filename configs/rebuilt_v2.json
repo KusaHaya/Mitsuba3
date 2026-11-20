@@ -1,0 +1,93 @@
+{
+  "description": "Rebuilt full 19-bar 546x312 mm optical model with interface-safe local coordinates. Default view is only 2x0.25 mm; physical optical dimensions unchanged.",
+  "optics": {
+    "pitch_mm": 0.7,
+    "radius_mm": 0.5,
+    "thickness_mm": 2.0,
+    "ior": 1.49,
+    "normal_slope": 0.3333333333333333,
+    "lens_count": 900,
+    "segments_per_lens": 128,
+    "v_length_mm": 480.0,
+    "led_width_horizontal_mm": 3.0,
+    "led_pitch_horizontal_mm": 24.771175004652306,
+    "emitter_radiance": 1.0
+  },
+  "led_to_vertex_mm": 138.13,
+  "screen_from_vertex_mm": 1.5,
+  "screen_medium": "pmma",
+  "mask": {
+    "open_fraction": 0.4,
+    "z_mm": 0.001
+  },
+  "baffles": {
+    "height_mm": 32.0,
+    "thickness_mm": 1.5
+  },
+  "roi_mm": [
+    546.0,
+    312.0
+  ],
+  "cases": [
+    "baffles",
+    "mask_baffles"
+  ],
+  "render": {
+    "variant": "cuda_ad_rgb",
+    "threads": 8,
+    "seed": 17,
+    "max_depth": 12,
+    "preview": {
+      "width": 512,
+      "height": 64,
+      "spp": 256
+    },
+    "quality": {
+      "width": 1024,
+      "height": 128,
+      "spp": 512
+    },
+    "scene_scale": 1000.0,
+    "origin_mode": "view_center"
+  },
+  "led_array": {
+    "count": 19,
+    "layout": "centered",
+    "first_phase": 0,
+    "bar_length_mm": 328.87687665751145
+  },
+  "rear_acrylic_mm": 10.0,
+  "lens_outline_mm": [
+    546.0,
+    312.0
+  ],
+  "model_revision": "2026-11-20-interface-safe-v2",
+  "observer_evaluation": {
+    "purpose": "Projection metadata only; not a physical LCD/diffuser simulation",
+    "acrylic_after_screen_mm": 5.0,
+    "acrylic_ior": 1.49,
+    "panel_back_glass_mm": 1.0,
+    "panel_back_glass_ior": 1.5,
+    "panel_glass_assumed": true,
+    "eye_separation_mm": 65.0,
+    "eye_separation_assumed": true,
+    "distances_from_lcd_mm": [
+      800.0,
+      900.0,
+      1000.0,
+      1100.0,
+      1200.0
+    ],
+    "screen_model": "ideal irradiance receiver; angular scattering unmeasured"
+  },
+  "view": {
+    "center_mm": [
+      0.0,
+      0.0
+    ],
+    "size_mm": [
+      2.0,
+      0.25
+    ]
+  }
+}
