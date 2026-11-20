@@ -1,7 +1,7 @@
 """Configurable LED/lenticular illumination experiment. Run from VS Code or CLI.
 
 This is geometric light transport, not a calibrated LCD crosstalk simulator.
-All user distances are millimeters. Scene geometry is converted to meters.
+All user distances are millimeters. Scene coordinates are scaled and view-centered for numerical robustness.
 """
 from __future__ import annotations
 import argparse
@@ -69,6 +69,8 @@ def led_layout(data, cfg):
 def load_config(path, mode='preview'):
     data = json.loads(Path(path).read_text(encoding='utf-8-sig'))
     scale=data['render'].setdefault('scene_scale',1000.)
+    origin_mode=data['render'].setdefault('origin_mode','view_center')
+    if origin_mode not in ('view_center','global'):raise ValueError('render.origin_mode must be view_center or global')
     if isinstance(scale,bool) or not isinstance(scale,(int,float)) or not math.isfinite(scale) or scale<=0:
         raise ValueError('render.scene_scale must be finite and positive')
     allowed = {f.name for f in fields(OpticsConfig)}
@@ -149,21 +151,22 @@ def load_config(path, mode='preview'):
     return data, cfg
 
 
-def scale_scene_geometry(scene,scale,T):
+def scale_scene_geometry(scene,scale,T,origin_m=(0.,0.,0.)):
     """Use larger numerical coordinates so ray offsets cannot skip micron gaps.
 
     Input geometry is in metres. scale=1000 gives millimetre-sized scene units.
     Physical dimensions and radiance stay unchanged; camera rotations must NOT scale.
     """
+    origin=np.asarray(origin_m,dtype=float)
     result=dict(scene)
     for key,value in scene.items():
         if not isinstance(value,dict) or not ('to_world' in value or value.get('type')=='ply'):continue
         v=dict(value);transform=v.get('to_world',T())
         if value.get('type') in ('perspective','orthographic'):
-            matrix=np.array(transform.matrix);matrix[:3,3]*=scale;v['to_world']=T(matrix)
+            matrix=np.array(transform.matrix);matrix[:3,3]=(matrix[:3,3]-origin)*scale;v['to_world']=T(matrix)
             for clip in ('near_clip','far_clip'):
                 if clip in v:v[clip]*=scale
-        else:v['to_world']=T.scale(scale) @ transform
+        else:v['to_world']=T.translate((-origin*scale).tolist()) @ T.scale(scale) @ transform
         result[key]=v
     return result
 
@@ -248,7 +251,8 @@ def scene_dict(mi, data, cfg, mesh, phase, case, mode):
                     @ T.rotate([0,0,1],math.degrees(angle))
                     @ T.scale([thick*mm/2,bar_length*mm/2,h*mm/2]),
                 'bsdf':{'type':'diffuse','reflectance':0.}}
-    return scale_scene_geometry(scene,data['render'].get('scene_scale',1000.),T)
+    origin=(view_x*mm,view_y*mm,0.) if data['render'].get('origin_mode','view_center')=='view_center' else (0.,0.,0.)
+    return scale_scene_geometry(scene,data['render'].get('scene_scale',1000.),T,origin)
 
 
 def folded_profile(image, roi_mm, slope, period_mm, bins=128):
