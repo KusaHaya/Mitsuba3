@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 import numpy as np
 from simulate import ROOT,load_config,led_layout,scene_dict,lens_mesh_config,folded_profile,horizontal_profile
-from scan_tiles import peak_stats,tile_data
+from scan_tiles import peak_stats,tile_data,valid_field
 from optics import lens_coordinates
 from run import write_binary_ply
 
@@ -92,6 +92,7 @@ def main(argv=None):
     p.add_argument('--pixels',type=int,default=512)
     p.add_argument('--samples-per-pass',type=int,default=4)
     p.add_argument('--output',type=Path)
+    p.add_argument('--resume',type=Path)
     p.add_argument('--plan-only',action='store_true')
     p.add_argument('--analyze-only',type=Path)
     args=p.parse_args(argv)
@@ -116,14 +117,18 @@ def main(argv=None):
                          jobs=2*len(leds)*len(spp)*len(seeds),variant=args.variant,
                          emitting_length_mm=manifest['emitting_length_mm']),indent=2))
     if args.plan_only:return 0
-    folder=args.output or ROOT/'results'/('single_led_'+datetime.now().strftime('%Y%m%d_%H%M%S_%f'))
-    if folder.exists() and any(folder.iterdir()):p.error('Output folder is not empty')
+    folder=args.resume or args.output or ROOT/'results'/('single_led_'+datetime.now().strftime('%Y%m%d_%H%M%S_%f'))
+    if args.resume:
+        if json.loads((folder/'diagnostic_config.json').read_text())!=manifest:p.error('Resume settings differ')
+    elif folder.exists() and any(folder.iterdir()):p.error('Output folder is not empty')
     import mitsuba as mi
     import drjit as dr
     mi.set_variant(args.variant);dr.set_thread_count(d['render']['threads'])
     folder.mkdir(parents=True,exist_ok=True)
     (folder/'diagnostic_config.json').write_text(json.dumps(manifest,indent=2)+'\n')
-    mesh=folder/'lens.ply';v,f=lens_coordinates(lens_mesh_config(d,cfg),d.get('lens_outline_mm'));write_binary_ply(mesh,v,f)
+    mesh=folder/'lens.ply'
+    if not mesh.exists():
+        v,f=lens_coordinates(lens_mesh_config(d,cfg),d.get('lens_outline_mm'));write_binary_ply(mesh,v,f)
     local=tile_data(d,tile);local['render']['preview']['spp']=args.samples_per_pass
     total=2*len(leds)*len(spp)*len(seeds);done=0
     for led in leds:
@@ -135,6 +140,9 @@ def main(argv=None):
             scene=mi.load_dict(obj)
             for count in spp:
                 for seed in seeds:
+                    path=folder/f'{case}_led{led["index"]:02d}_spp{count}_seed{seed}.npy'
+                    if valid_field(path,(args.pixels//8,args.pixels)):
+                        done+=1;print(f'[{done}/{total}] Already saved: {path.name}',flush=True);continue
                     started=time.monotonic();acc=np.zeros((args.pixels//8,args.pixels),np.float64)
                     remaining=count;part=0
                     while remaining:
@@ -143,7 +151,9 @@ def main(argv=None):
                         acc+=im.mean(2)*math.pi*batch;remaining-=batch;part+=1
                     field=(acc/count).astype(np.float32)
                     if not np.isfinite(field).all() or (field<0).any():raise ValueError('Invalid rendered field')
-                    np.save(folder/f'{case}_led{led["index"]:02d}_spp{count}_seed{seed}.npy',field)
+                    temporary=path.with_suffix('.tmp')
+                    with temporary.open('wb') as handle:np.save(handle,field)
+                    temporary.replace(path)
                     done+=1;print(f'[{done}/{total}] LED {led["index"]} {case}, {count} spp, seed {seed}: {time.monotonic()-started:.1f}s',flush=True)
             del scene
             if args.variant.startswith('cuda'):dr.sync_thread();dr.flush_malloc_cache()
