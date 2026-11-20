@@ -33,9 +33,10 @@ def test_view_moves_camera_only_and_preserves_full_receiver_and_sources(tmp_path
     assert v['roi_mm']==d['roi_mm'] and v['led_array']==d['led_array']
     a=scene_dict(mi,d,c,tmp_path/'lens.ply',0,'baffles','preview')
     b=scene_dict(mi,v,c,tmp_path/'lens.ply',0,'baffles','preview')
+    restore=np.eye(4);restore[:2,3]=np.array(t['center_mm'])*.001*d['render']['scene_scale']
     for key in ['receiver','pmma_after_lens','led_0','baffle_0']:
-        assert np.allclose(np.array(a[key]['to_world'].matrix),np.array(b[key]['to_world'].matrix))
-    assert not np.allclose(np.array(a['sensor']['to_world'].matrix),np.array(b['sensor']['to_world'].matrix))
+        assert np.allclose(np.array(a[key]['to_world'].matrix),restore @ np.array(b[key]['to_world'].matrix))
+    assert not np.allclose(np.array(a['sensor']['to_world'].matrix),restore @ np.array(b['sensor']['to_world'].matrix))
     assert len([key for key in b if key.startswith('led_')])==5
 
 
