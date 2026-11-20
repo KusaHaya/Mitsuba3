@@ -289,8 +289,9 @@ def main(argv=None):
             scene=mi.load_dict(obj);params=mi.traverse(scene)
             for tile in pending:
                 x,y=tile['center_mm'];z=data['screen_from_vertex_mm'];dist=min(1.,z*.5)
+                unit=.001*data['render']['scene_scale']
                 params['sensor.to_world']=mi.ScalarTransform4f.look_at(
-                    origin=[x*.001,y*.001,(z-dist)*.001],target=[x*.001,y*.001,z*.001],up=[0,1,0])
+                    origin=[x*unit,y*unit,(z-dist)*unit],target=[x*unit,y*unit,z*unit],up=[0,1,0])
                 params.update()
                 started=time.monotonic();acc=np.zeros((tile['pixels'][1],tile['pixels'][0]),np.float64)
                 remaining=args.spp;part=0
