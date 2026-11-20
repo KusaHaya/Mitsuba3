@@ -48,6 +48,16 @@ def make_tiles(data, regions, tile_mm=8., pixels=2048, y=0., limit=None, band_mm
     return tiles[:limit] if limit else tiles
 
 
+def make_spot_tiles(data,centers,width=2.,pixels=512,y=0.):
+    """Independent small fields of the full model, with one local origin per field."""
+    if not centers or len(centers)!=len(set(centers)):raise ValueError('Spot x positions must be distinct')
+    if not math.isfinite(width) or width<=0 or pixels<16 or pixels%8:raise ValueError('Invalid spot size/pixels')
+    if not math.isfinite(y) or abs(y)+width/16>data['roi_mm'][1]/2:raise ValueError('Spot y outside receiver')
+    if any(not math.isfinite(x) or abs(x)+width/2>data['roi_mm'][0]/2 for x in centers):raise ValueError('Spot x outside receiver')
+    return [dict(id=f'spot_{i:03d}',region='spots',index=i,center_mm=[x,y],
+                 size_mm=[width,width/8],pixels=[pixels,pixels//8]) for i,x in enumerate(centers)]
+
+
 def tile_data(base,tile):
     data=copy.deepcopy(base)
     data['view']={k:tile[k] for k in ('center_mm','size_mm')}
@@ -208,6 +218,9 @@ def analyze(folder):
     report=dict(complete_tiles=len(complete),planned_tiles=len(tiles),
                 integrator=manifest['integrator'],spp=manifest['spp'],
                 display_max=display_max,
+                model_revision=data.get('model_revision','legacy'),
+                scene_scale=data['render'].get('scene_scale',1.),
+                origin_mode=data['render'].get('origin_mode','global'),
                 pixel_mm=tiles[0]['size_mm'][0]/tiles[0]['pixels'][0],
                 warning='Spatial profile overlap and smoothed dominant-peak widths only. '
                         'Not LCD/observer crosstalk or converged PSF. '
@@ -234,6 +247,7 @@ def main(argv=None):
     parser.add_argument('--band-mm',type=float,default=200.)
     parser.add_argument('--region',choices=['left','center','right'],action='append')
     parser.add_argument('--y',type=float,default=0.)
+    parser.add_argument('--spot-x',type=float,action='append',help='Small independent field x (repeatable)')
     parser.add_argument('--limit-tiles',type=int)
     parser.add_argument('--output',type=Path)
     parser.add_argument('--resume',type=Path)
@@ -248,11 +262,14 @@ def main(argv=None):
         data,cfg=load_config(args.config)
         regions=args.region or ['center','left','right']
         if len(regions)!=len(set(regions)):raise ValueError('Duplicate regions')
-        tiles=make_tiles(data,regions,args.tile_mm,args.pixels,args.y,args.limit_tiles,args.band_mm)
+        if args.spot_x is not None:
+            if args.region or args.limit_tiles is not None:raise ValueError('Do not combine spot-x with region or limit-tiles')
+            tiles=make_spot_tiles(data,args.spot_x,args.tile_mm,args.pixels,args.y)
+        else:tiles=make_tiles(data,regions,args.tile_mm,args.pixels,args.y,args.limit_tiles,args.band_mm)
     except (ValueError,OSError,KeyError) as exc:parser.error(str(exc))
     data['render']['variant']=args.variant
     settings=dict(physical_config=data,tiles=tiles,integrator='path',spp=args.spp,
-                  samples_per_pass=args.samples_per_pass,version=2)
+                  samples_per_pass=args.samples_per_pass,version=3)
     if args.resume:
         folder=args.resume
         saved=json.loads((folder/'scan_config.json').read_text())
@@ -263,7 +280,7 @@ def main(argv=None):
         if folder.exists() and any(folder.iterdir()):parser.error('Output is not empty; use --resume')
     print(f'{len(tiles)} tiles; {len(data["cases"])*4*len(tiles)} jobs; '
           f'pixel {tiles[0]["size_mm"][0]/args.pixels:.6f} mm; spp {args.spp}; path integrator')
-    print('Each band covers the four-LED illumination envelope approximately; full optics and all LEDs remain unchanged.')
+    print('Full optics and all LEDs retained; numerical origin is rebuilt for each field.')
     print(f'Output: {folder.resolve()}',flush=True)
     if args.plan_only:return 0
     import mitsuba as mi
@@ -283,16 +300,11 @@ def main(argv=None):
                                                        (t['pixels'][1],t['pixels'][0]))]
             done+=len(tiles)-len(pending)
             if not pending:continue
-            local=tile_data(data,pending[0]);local['render']['preview']['spp']=min(args.samples_per_pass,args.spp)
-            obj=scene_dict(mi,local,cfg,mesh,phase,case,'preview')
-            obj['integrator']={'type':'path','max_depth':data['render']['max_depth'],'hide_emitters':True}
-            scene=mi.load_dict(obj);params=mi.traverse(scene)
             for tile in pending:
-                x,y=tile['center_mm'];z=data['screen_from_vertex_mm'];dist=min(1.,z*.5)
-                unit=.001*data['render']['scene_scale']
-                params['sensor.to_world']=mi.ScalarTransform4f.look_at(
-                    origin=[x*unit,y*unit,(z-dist)*unit],target=[x*unit,y*unit,z*unit],up=[0,1,0])
-                params.update()
+                local=tile_data(data,tile);local['render']['preview']['spp']=min(args.samples_per_pass,args.spp)
+                obj=scene_dict(mi,local,cfg,mesh,phase,case,'preview')
+                obj['integrator']={'type':'path','max_depth':data['render']['max_depth'],'hide_emitters':True}
+                scene=mi.load_dict(obj)
                 started=time.monotonic();acc=np.zeros((tile['pixels'][1],tile['pixels'][0]),np.float64)
                 remaining=args.spp;part=0
                 while remaining:
@@ -310,7 +322,7 @@ def main(argv=None):
                 (folder/'progress.json').write_text(json.dumps(dict(completed=done,total=total,last_file=str(path))))
                 print(f'[{done}/{total}] {tile["id"]} {case} phase{phase}: '
                       f'{time.monotonic()-started:.1f}s; mean={image.mean():.6g}',flush=True)
-            del params,scene
+            del scene
             if args.variant.startswith('cuda'):
                 dr.sync_thread();dr.flush_malloc_cache()
     analyze(folder)
