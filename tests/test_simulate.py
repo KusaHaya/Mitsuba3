@@ -148,7 +148,7 @@ def test_mitsuba_scene_and_actual_render(tmp_path):
         assert np.isfinite(im).all() and im.max()>0
     # Baffle origin and scale correspond to exactly 32 mm height, not a half-height confusion.
     bbox=mi.load_dict(obj['baffle_1']).bbox()
-    assert np.isclose(float(bbox.max.z-bbox.min.z),.032,atol=1e-6)
+    assert np.isclose(float(bbox.max.z-bbox.min.z),.032*d['render']['scene_scale'],atol=1e-6)
 
 
 def test_phase_figures_do_not_mix_phases_and_keep_scales(tmp_path, monkeypatch):
